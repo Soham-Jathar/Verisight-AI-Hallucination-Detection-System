@@ -32,6 +32,8 @@ Interactive docs: `http://localhost:8000/docs`
 | GET | `/health` | Health check (`{"status":"ok"}`) |
 | GET | `/` | Service banner |
 | POST | `/api/analyze` | Run web verification pipeline |
+| POST | `/api/documents` | Upload a PDF and extract selectable/OCR text as temporary evidence |
+| POST | `/api/images` | Upload a PNG, JPEG, or WEBP image and extract visible text with OCR |
 
 ### `POST /api/analyze`
 
@@ -63,6 +65,7 @@ Supported modes:
 
 - `web` — retrieves and filters web evidence, then verifies generated factual claims
 - `document` — verifies against uploaded PDF evidence
+- `image` — verifies against OCR text extracted from an uploaded image
 - `hybrid` — combines uploaded-document and web evidence
 
 ## Environment variables
@@ -76,10 +79,17 @@ See `.env.example`. All are optional for local development.
 | `GROQ_API_KEY` | unset | Enables Groq answer generation |
 | `GROQ_MODEL` | configured model | Groq model name |
 | `TAVILY_API_KEY` | unset | Enables Tavily web retrieval |
+| `TESSERACT_CMD` | unset | Optional path to `tesseract.exe`; required only if it is not on PATH for image/scanned-PDF OCR |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated frontend origins |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | External HTTP timeout |
 
 Without an LLM provider key, the API returns a clear provider-configuration error rather than inventing an answer.
+
+## Image and scanned-PDF evidence
+
+PDF text is always read with `pypdf`. When Tesseract OCR is available, VeriSight additionally extracts readable text from embedded PDF images and scanned pages. `POST /api/images` uses the same OCR path for PNG, JPEG, and WEBP uploads. The extracted text flows through the existing evidence retrieval and claim-verification pipeline.
+
+This is text/OCR evidence, not general computer-vision verification: diagrams, charts, and photographs without readable text are not yet interpreted.
 
 ## Tests
 

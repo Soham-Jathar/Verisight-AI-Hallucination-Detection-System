@@ -59,6 +59,22 @@ function Citation({ source, index }) {
     : <a href={source.url} target="_blank" rel="noreferrer">{content}</a>
 }
 
+const evidenceStopWords = new Set(['about', 'after', 'against', 'also', 'among', 'because', 'before', 'being', 'could', 'first', 'from', 'into', 'more', 'other', 'their', 'there', 'these', 'they', 'this', 'through', 'under', 'were', 'what', 'when', 'which', 'with', 'would'])
+
+function evidenceTerms(claim) {
+  return [...new Set((claim.toLowerCase().match(/[a-z0-9+#]{4,}/g) ?? []).filter((term) => !evidenceStopWords.has(term)))].slice(0, 12)
+}
+
+function HighlightedEvidence({ claim, text }) {
+  const terms = evidenceTerms(claim)
+  if (!terms.length || !text) return text
+  const escaped = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const pattern = new RegExp(`(${escaped})`, 'gi')
+  return text.split(pattern).map((part, index) => terms.includes(part.toLowerCase())
+    ? <mark key={`${part}-${index}`}>{part}</mark>
+    : part)
+}
+
 function createConversation() {
   return { id: crypto.randomUUID(), title: 'New conversation', messages: [] }
 }
@@ -163,7 +179,8 @@ function AuthDialog({ open, recoveryRequested, onClose, onAuthenticated, onRecov
   </div>
 }
 
-function VerificationCard({ result }) {
+function VerificationCard({ result, feedback = {}, onFeedback }) {
+  const [expandedClaim, setExpandedClaim] = useState(null)
   if (!result?.claims?.length) return null
   const reliability = Math.round((result.reliability_score ?? 0) * 100)
   const uncertainty = result.uncertainty_score == null ? null : Math.round(result.uncertainty_score * 100)
@@ -175,11 +192,17 @@ function VerificationCard({ result }) {
     <div className="verification-content">
       <p className="verification-summary">{result.message}</p>
       <div className="claim-list">
-        {result.claims.map((claim, index) => <article className="claim" key={`${claim.claim}-${index}`}>
+        {result.claims.map((claim, index) => <article className={`claim ${expandedClaim === index ? 'expanded' : ''}`} key={`${claim.claim}-${index}`}>
           <span className={`claim-dot ${claim.status}`}></span>
           <div><b>{claim.claim}</b><p>{statusLabel[claim.status]} · {Math.round(claim.confidence * 100)}% confidence</p><small>{claim.rationale}</small>
             {(claim.evidence_quality != null || claim.source_agreement != null) && <small>Evidence quality: {Math.round((claim.evidence_quality ?? 0) * 100)}% · Source agreement: {Math.round((claim.source_agreement ?? 0) * 100)}%</small>}
-            {claim.citations?.length > 0 && <div className="claim-citations"><span>Evidence</span>{claim.citations.map((source, citationIndex) => <Citation key={`${source.url}-${citationIndex}`} source={source} index={citationIndex} />)}</div>}
+            {claim.citations?.length > 0 && <><div className="claim-citations"><span>Evidence</span>{claim.citations.map((source, citationIndex) => <Citation key={`${source.url}-${citationIndex}`} source={source} index={citationIndex} />)}</div>
+              <button className="evidence-toggle" type="button" onClick={() => setExpandedClaim((current) => current === index ? null : index)}>{expandedClaim === index ? 'Hide matched evidence' : 'Show matched evidence'}</button>
+              {expandedClaim === index && <div className="evidence-excerpts" aria-label={`Evidence excerpts for claim ${index + 1}`}>
+                {claim.citations.map((source, citationIndex) => <figure key={`${source.url}-${citationIndex}`}><figcaption>{source.title}</figcaption><blockquote><HighlightedEvidence claim={claim.claim} text={source.snippet} /></blockquote></figure>)}
+              </div>}
+            </>}
+            {onFeedback && <div className="claim-feedback"><span>Was this verification useful?</span><button type="button" className={feedback[index] === 'helpful' ? 'selected' : ''} onClick={() => onFeedback(index, 'helpful')} aria-pressed={feedback[index] === 'helpful'}>Helpful</button><button type="button" className={feedback[index] === 'needs-review' ? 'selected' : ''} onClick={() => onFeedback(index, 'needs-review')} aria-pressed={feedback[index] === 'needs-review'}>Needs correction</button></div>}
           </div>
         </article>)}
       </div>
@@ -220,10 +243,10 @@ function ComparisonCard({ comparisons }) {
   </section>
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onFeedback }) {
   if (message.role === 'user') return <article className="message user-message"><p>{message.content}</p></article>
   if (message.pending) return <article className="message assistant-message loading-message"><span className="assistant-avatar">V</span><div><p>Generating and checking sources<span className="typing-dots">...</span></p></div></article>
-  return <article className="message assistant-message"><span className="assistant-avatar">V</span><div className="assistant-copy"><p>{message.content}</p>{message.model && <small>{message.model}</small>}<ComparisonCard comparisons={message.verification?.comparisons} /><CorrectionCard correction={message.verification?.correction} /><VerificationCard result={message.verification} /></div></article>
+  return <article className="message assistant-message"><span className="assistant-avatar">V</span><div className="assistant-copy"><p>{message.content}</p>{message.model && <small>{message.model}</small>}<ComparisonCard comparisons={message.verification?.comparisons} /><CorrectionCard correction={message.verification?.correction} /><VerificationCard result={message.verification} feedback={message.feedback} onFeedback={onFeedback} /></div></article>
 }
 
 function App() {
@@ -247,7 +270,8 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [renamingId, setRenamingId] = useState(null)
   const [renameDraft, setRenameDraft] = useState('')
-  const fileInputRef = useRef(null)
+  const pdfInputRef = useRef(null)
+  const imageInputRef = useRef(null)
   const recognitionRef = useRef(null)
 
   useEffect(() => {
@@ -408,7 +432,7 @@ function App() {
     setActiveId(conversation.id)
   }
 
-  async function uploadPdf(event) {
+  async function uploadAttachment(event, endpoint, nextMode, fallbackMessage) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
@@ -417,12 +441,29 @@ function App() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const response = await fetch(`${API_URL}/api/documents`, { method: 'POST', body: formData })
+      const response = await fetch(`${API_URL}${endpoint}`, { method: 'POST', body: formData })
       const payload = await readApiPayload(response)
-      if (!response.ok) throw new Error(apiErrorMessage(payload, 'PDF upload failed.'))
+      if (!response.ok) throw new Error(apiErrorMessage(payload, fallbackMessage))
       setDocument(payload)
-      setEvidenceMode('document')
+      setEvidenceMode(nextMode)
     } catch (uploadError) { setError(uploadError.message) } finally { setUploading(false) }
+  }
+
+  function recordClaimFeedback(messageId, claimIndex, value) {
+    if (!activeConversation) return
+    const conversation = {
+      ...activeConversation,
+      messages: activeConversation.messages.map((message) => {
+        if (message.id !== messageId) return message
+        const current = message.feedback?.[claimIndex]
+        const feedback = { ...(message.feedback ?? {}) }
+        if (current === value) delete feedback[claimIndex]
+        else feedback[claimIndex] = value
+        return { ...message, feedback }
+      }),
+    }
+    setConversations((current) => current.map((item) => item.id === conversation.id ? conversation : item))
+    void persistConversation(conversation)
   }
 
   function startListening() {
@@ -449,7 +490,7 @@ function App() {
     event.preventDefault()
     const question = draft.trim()
     if (question.length < 3 || loading || !activeConversation) return
-    if ((evidenceMode === 'document' || evidenceMode === 'hybrid') && !document) { setError('Attach a PDF before using PDF or hybrid evidence.'); return }
+    if ((evidenceMode === 'document' || evidenceMode === 'image' || evidenceMode === 'hybrid') && !document) { setError('Attach a PDF or image before using its evidence.'); return }
 
     const conversationId = activeConversation.id
     const userMessage = { id: crypto.randomUUID(), role: 'user', content: question }
@@ -511,25 +552,27 @@ function App() {
         <div><p>AI HALLUCINATION DETECTION</p><h1>{activeConversation?.title ?? 'New conversation'}</h1></div>
         <div className="chat-controls">
           <label className="provider-select"><span>Model</span><select value={provider} onChange={(event) => setProvider(event.target.value)}>{providers.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.label}{item.configured ? '' : ' (add key)'}</option>)}</select></label>
-          <label className="provider-select"><span>Evidence</span><select value={evidenceMode} onChange={(event) => setEvidenceMode(event.target.value)}><option value="web">Web</option><option value="document" disabled={!document}>PDF</option><option value="hybrid" disabled={!document}>Hybrid</option></select></label>
+          <label className="provider-select"><span>Evidence</span><select value={evidenceMode} onChange={(event) => setEvidenceMode(event.target.value)}><option value="web">Web</option><option value="document" disabled={!document || document.kind !== 'pdf'}>PDF</option><option value="image" disabled={!document || document.kind !== 'image'}>Image text</option><option value="hybrid" disabled={!document}>Hybrid</option></select></label>
           <label className="verify-toggle"><input type="checkbox" checked={verifyEnabled} onChange={(event) => setVerifyEnabled(event.target.checked)} /><span></span>Verify</label>
           <label className="verify-toggle"><input type="checkbox" checked={uncertaintyEnabled} onChange={(event) => setUncertaintyEnabled(event.target.checked)} /><span></span>Uncertainty</label>
         </div>
       </header>
       <section className="message-thread" aria-live="polite">
-        {!activeConversation?.messages.length && <div className="welcome-card"><span className="assistant-avatar large">V</span><div><h2>What would you like to know?</h2><p>Ask by typing or voice. Attach a PDF to verify answers against its contents.</p><div className="suggestions"><button type="button" onClick={() => setDraft('Who created the Python programming language?')}>Who created Python?</button><button type="button" onClick={() => setDraft('Explain quantum computing in simple terms.')}>Explain quantum computing</button></div></div></div>}
-        {activeConversation?.messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+        {!activeConversation?.messages.length && <div className="welcome-card"><span className="assistant-avatar large">V</span><div><h2>What would you like to know?</h2><p>Ask by typing or voice. Attach a PDF or text-containing image to verify answers against its contents.</p><div className="suggestions"><button type="button" onClick={() => setDraft('Who created the Python programming language?')}>Who created Python?</button><button type="button" onClick={() => setDraft('Explain quantum computing in simple terms.')}>Explain quantum computing</button></div></div></div>}
+        {activeConversation?.messages.map((message) => <MessageBubble key={message.id} message={message} onFeedback={(claimIndex, value) => recordClaimFeedback(message.id, claimIndex, value)} />)}
       </section>
       <form className="composer" onSubmit={handleSubmit}>
-        {document && <div className="document-chip"><span>PDF: {document.filename} ({document.pages} page{document.pages === 1 ? '' : 's'})</span><button type="button" onClick={() => { setDocument(null); setEvidenceMode('web') }} aria-label="Remove PDF">×</button></div>}
+        {document && <div className="document-chip"><span>{document.kind === 'image' ? 'Image' : 'PDF'}: {document.filename} ({document.pages} page{document.pages === 1 ? '' : 's'}{document.ocr_used ? ' · OCR text extracted' : ''})</span><button type="button" onClick={() => { setDocument(null); setEvidenceMode('web') }} aria-label="Remove attachment">×</button></div>}
         <div className="composer-row">
-          <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={uploadPdf} />
-          <button className="utility-button" type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading || loading}>{uploading ? 'Uploading...' : 'Attach PDF'}</button>
+          <input ref={pdfInputRef} type="file" accept="application/pdf" hidden onChange={(event) => uploadAttachment(event, '/api/documents', 'document', 'PDF upload failed.')} />
+          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => uploadAttachment(event, '/api/images', 'image', 'Image upload failed.')} />
+          <button className="utility-button" type="button" onClick={() => pdfInputRef.current?.click()} disabled={uploading || loading}>{uploading ? 'Uploading...' : 'Attach PDF'}</button>
+          <button className="utility-button" type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading || loading}>{uploading ? 'Uploading...' : 'Attach image'}</button>
           <button className={`utility-button ${listening ? 'listening' : ''}`} type="button" onClick={startListening} disabled={loading}>{listening ? 'Listening...' : 'Voice'}</button>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message VeriSight..." aria-label="Message VeriSight" rows="1" />
           <button className="send-button" type="submit" disabled={loading || apiStatus !== 'online' || draft.trim().length < 3}>{loading ? 'Working...' : 'Send'}</button>
         </div>
-        <p>{verifyEnabled ? `Verification is on: using ${evidenceMode === 'document' ? 'your PDF' : evidenceMode === 'hybrid' ? 'web and your PDF' : 'web evidence'}.${uncertaintyEnabled ? ' Uncertainty uses two additional answer samples.' : ''}` : 'Verification is off: this response will not receive a reliability score.'}</p>
+        <p>{verifyEnabled ? `Verification is on: using ${evidenceMode === 'document' ? 'your PDF' : evidenceMode === 'image' ? 'text extracted from your image' : evidenceMode === 'hybrid' ? `web and your ${document?.kind === 'image' ? 'image text' : 'PDF'}` : 'web evidence'}.${uncertaintyEnabled ? ' Uncertainty uses two additional answer samples.' : ''}` : 'Verification is off: this response will not receive a reliability score.'}</p>
         {error && <strong className="error">{error}</strong>}
       </form>
       <AuthDialog

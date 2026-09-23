@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import analyze, documents, evaluation
+from app.routes import analyze, documents, evaluation, images
 from app.schemas import HealthResponse, RootResponse
 
 settings = get_settings()
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(analyze.router)
 app.include_router(documents.router)
+app.include_router(images.router)
 app.include_router(evaluation.router)
 
 

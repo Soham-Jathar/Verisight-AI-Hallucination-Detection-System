@@ -496,8 +496,14 @@ def _option_pair_support(claim: str, evidence: list[EvidenceSource]) -> float:
     return 0.0
 
 
-def _claim_evidence_excerpt(claim: str, source: EvidenceSource) -> str:
-    """Give NLI a focused premise instead of a long search-result paragraph."""
+def _claim_evidence_excerpt(claim: str, source: EvidenceSource, *, sentence_limit: int = 2) -> str:
+    """Give NLI a focused premise instead of a long search-result paragraph.
+
+    NLI can use two complementary sentences for context. The evidence UI uses
+    ``sentence_limit=1`` so it highlights only the most directly relevant
+    statement instead of implying that a neighbouring sentence supports the
+    claim too.
+    """
     sentences = [
         sentence.strip()
         for sentence in re.split(r"(?<=[.!?;])\s+", source.snippet)
@@ -521,7 +527,7 @@ def _claim_evidence_excerpt(claim: str, source: EvidenceSource) -> str:
         key=lambda item: item[0],
         reverse=True,
     )
-    selected = [sentence for _, sentence in ranked[:2]]
+    selected = [sentence for _, sentence in ranked[:sentence_limit]]
     return f"{source.title}. {' '.join(selected)}"
 
 
@@ -593,6 +599,24 @@ def select_claim_citations(
             minimum_score=0.42,
         )
     ]
+
+
+def _claim_evidence_citations(claim: str, evidence: list[EvidenceSource]) -> list[EvidenceSource]:
+    """Return citations with the exact excerpt used for a claim decision.
+
+    The URL and source-quality metadata stay unchanged. Replacing only the
+    displayed snippet lets the UI show a user the same focused evidence that
+    was passed to the NLI verifier, instead of an unrelated part of a long
+    search-result paragraph or PDF chunk.
+    """
+    citations: list[EvidenceSource] = []
+    for source in select_claim_citations(claim, evidence):
+        excerpt = _claim_evidence_excerpt(claim, source, sentence_limit=1)
+        prefix = f"{source.title}. "
+        if excerpt.startswith(prefix):
+            excerpt = excerpt[len(prefix):]
+        citations.append(source.model_copy(update={"snippet": excerpt}))
+    return citations
 
 
 @lru_cache
@@ -1040,7 +1064,7 @@ def verify_claims(
             if option_table_evidence:
                 focused_evidence = option_table_evidence[:2]
             status, confidence, rationale, agreement = _nli_verdict(claim, focused_evidence)
-            citations = select_claim_citations(claim, focused_evidence)
+            citations = _claim_evidence_citations(claim, focused_evidence)
             assessments.append(
                 ClaimAssessment(
                     claim=claim,
@@ -1057,7 +1081,7 @@ def verify_claims(
         return [
             _fallback_assessment(claim, _claim_evidence(claim, evidence), str(exc)).model_copy(
                 update={
-                    "citations": select_claim_citations(
+                    "citations": _claim_evidence_citations(
                         claim,
                         _claim_evidence(claim, evidence),
                     )

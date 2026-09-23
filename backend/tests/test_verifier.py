@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from app.services import verifier
 from app.services.verifier import (
+    _claim_evidence_citations,
     _claim_evidence_excerpt,
     _option_pair_support,
     extract_claims,
@@ -155,6 +156,20 @@ def test_semantic_reranking_can_choose_a_meaningful_evidence_sentence(monkeypatc
     excerpt = _claim_evidence_excerpt("Who led the initiative?", source)
 
     assert "Priya Rao directed the initiative." in excerpt
+
+
+def test_claim_citation_contains_the_focused_evidence_excerpt() -> None:
+    source = EvidenceSource(
+        title="Python history",
+        url="https://example.com/python",
+        snippet="An unrelated committee met in 2001. Guido van Rossum created Python in the late 1980s. Another event followed.",
+    )
+
+    citations = _claim_evidence_citations("Guido van Rossum created Python.", [source])
+
+    assert len(citations) == 1
+    assert "Guido van Rossum created Python" in citations[0].snippet
+    assert "unrelated committee" not in citations[0].snippet
 
 
 def test_verification_sources_exclude_unrelated_pages() -> None:

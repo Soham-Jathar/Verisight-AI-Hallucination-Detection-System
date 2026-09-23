@@ -104,7 +104,17 @@ def test_document_mode_requires_an_uploaded_pdf(client: TestClient) -> None:
         json={"question": "Who created Python?", "mode": "document"},
     )
     assert response.status_code == 400
-    assert "Upload a PDF" in response.json()["detail"]
+    assert "Upload a PDF or image" in response.json()["detail"]
+
+
+def test_image_mode_requires_an_uploaded_image(client: TestClient) -> None:
+    response = client.post(
+        "/api/analyze",
+        json={"question": "What text is in the image?", "mode": "image"},
+    )
+
+    assert response.status_code == 400
+    assert "Upload a PDF or image" in response.json()["detail"]
 
 
 def test_analyze_web_mode_contract(client: TestClient) -> None:

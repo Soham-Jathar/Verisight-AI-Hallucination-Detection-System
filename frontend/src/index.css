@@ -37,6 +37,18 @@
 .claim-citations > span { color: #8292b2; font: 8px 'DM Mono', monospace; letter-spacing: .05em; text-transform: uppercase; }
 .claim-citations a, .claim-citations em { color: #bdc8ff; font-size: 9px; font-style: normal; text-decoration: none; }
 .claim-citations a:hover { text-decoration: underline; }
+.evidence-toggle { margin-top: 8px; padding: 4px 6px; color: #b8c8ff; border: 1px solid #9eafe235; border-radius: 5px; background: #202c48; font: 9px 'DM Mono', monospace; }
+.evidence-toggle:hover { background: #2c3b61; }
+.evidence-excerpts { display: grid; gap: 7px; margin-top: 8px; padding: 9px; border: 1px solid #93a7e22b; border-radius: 7px; background: #1018288a; }
+.evidence-excerpts figure { margin: 0; }
+.evidence-excerpts figcaption { color: #bfcaf1; font-size: 9px; font-weight: 700; }
+.evidence-excerpts blockquote { margin: 5px 0 0; color: #9eafd0; font-size: 10px; line-height: 1.5; }
+.evidence-excerpts mark { padding: 0 2px; color: #f2e6b5; border-radius: 2px; background: #8a743534; }
+.claim-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 9px; color: #7283a5; font-size: 9px; }
+.claim-feedback > span { margin-right: 2px; }
+.claim-feedback button { padding: 3px 6px; color: #9faccc; border: 1px solid #9eafe228; border-radius: 5px; background: transparent; font-size: 9px; }
+.claim-feedback button:hover, .claim-feedback button.selected { color: #e6edff; border-color: #8e9df154; background: #2a385b; }
+.claim-feedback button.selected:last-child { color: #ffd5d8; border-color: #c46d774d; background: #442735; }
 .account-panel strong { overflow: hidden; color: #c7d2ea; font: 10px 'DM Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .account-panel button { width: fit-content; padding: 0; color: #aebcff; border: 0; background: transparent; font-size: 10px; text-decoration: underline; }
 .auth-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 20px; background: #070b15bb; }

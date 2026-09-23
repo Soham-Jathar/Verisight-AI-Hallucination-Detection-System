@@ -1,8 +1,17 @@
+import asyncio
+import io
+
+from fastapi import UploadFile
+from starlette.datastructures import Headers
+
+from app.services import documents
 from app.services.documents import (
     DOCUMENT_CHUNK_OVERLAP_WORDS,
     DOCUMENT_CHUNK_WORDS,
     _document_chunks,
     _secondary_paper_options_from_text,
+    document_evidence,
+    save_image,
 )
 
 
@@ -29,3 +38,18 @@ DA CS, EC, EE, MA, ME, PH, RA, ST, XE  PI ME, XE
         "For DA, the second paper options are:\n"
         "1. CS\n2. EC\n3. EE\n4. MA\n5. ME\n6. PH\n7. RA\n8. ST\n9. XE"
     )
+
+
+def test_image_ocr_is_retained_as_document_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(documents, "_ocr_image_bytes", lambda *_args, **_kwargs: "The launch date is 14 March 1879.")
+    upload = UploadFile(
+        file=io.BytesIO(b"image-data"),
+        filename="birth-record.png",
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+    info = asyncio.run(save_image(upload))
+
+    assert info.kind == "image"
+    assert info.ocr_used
+    assert document_evidence(info.id, "What is the launch date?")[0].snippet == "The launch date is 14 March 1879."

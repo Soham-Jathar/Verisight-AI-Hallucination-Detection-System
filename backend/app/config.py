@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
     tavily_api_key: str | None = None
     request_timeout_seconds: float = 30.0
+    # Optional path to the native Tesseract executable. Leave unset when it is
+    # available on PATH. OCR is used for image uploads and scanned/image PDF
+    # content; normal selectable-PDF text extraction does not require it.
+    tesseract_cmd: str | None = None
     evaluation_dashboard_enabled: bool = False
 
 

@@ -2,18 +2,19 @@
 
 React and Vite frontend for the VeriSight evidence-grounded AI reliability platform.
 
-It provides the conversational interface for asking questions, uploading PDFs, selecting an LLM provider, viewing claim-level verification, opening evidence citations, comparing models, and managing saved conversations.
+It provides the conversational interface for asking questions, uploading PDFs or text-containing images, selecting an LLM provider, viewing claim-level verification, opening highlighted evidence excerpts, comparing models, and managing saved conversations.
 
 ## User-facing capabilities
 
 - Chat-style question and follow-up flow
-- Web, document, and hybrid verification modes
-- PDF upload and document-backed questioning
+- Web, PDF, image-text, and hybrid verification modes
+- PDF upload, image OCR upload, and document-backed questioning
 - Speech-to-text input where supported by the browser
 - Gemini, Groq, and provider comparison controls
 - Supported / needs-review / unsupported claim cards
 - Reliability, confidence, uncertainty, evidence-quality, and source-agreement signals
-- Evidence and citation links for factual verification
+- Claim-level evidence excerpts with matching terms highlighted
+- Helpful / needs-correction feedback controls on each verification
 - Supabase sign-up, sign-in, password recovery, and persistent chat history
 - Rename and delete controls for saved signed-in conversations
 

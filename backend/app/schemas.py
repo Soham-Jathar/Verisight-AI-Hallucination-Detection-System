@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class VerificationMode(str, Enum):
     WEB = "web"
     DOCUMENT = "document"
+    IMAGE = "image"
     HYBRID = "hybrid"
 
 
@@ -38,6 +39,8 @@ class DocumentInfo(BaseModel):
     filename: str
     pages: int = Field(ge=0)
     characters: int = Field(ge=0)
+    kind: Literal["pdf", "image"] = "pdf"
+    ocr_used: bool = False
 
 
 class EvidenceSource(BaseModel):

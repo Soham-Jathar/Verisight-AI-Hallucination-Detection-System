@@ -37,14 +37,15 @@ Reliability, uncertainty, citations, and evidence-grounded correction
 
 - **Claim-level hallucination detection** — labels every factual claim as supported, needs review, or unsupported.
 - **Independent NLI verification** — a local DeBERTa Natural Language Inference model checks whether evidence entails, contradicts, or does not establish each claim.
-- **Web, PDF, and hybrid evidence modes** — verifies against retrieved sources, an uploaded document, or both.
-- **Evidence-linked citations** — shows sources relevant to individual claims rather than a large unrelated list.
+- **Web, PDF, image, and hybrid evidence modes** — verifies against retrieved sources, an uploaded document, OCR text from an image, or both.
+- **Claim-to-evidence highlighting** — lets users open the exact evidence excerpt used for each claim decision, with matching terms highlighted.
+- **Verification feedback** — users can mark an individual verification as helpful or needing correction; signed-in users retain this feedback in their saved chat history.
 - **Reliability and uncertainty signals** — separately measure evidence support and answer instability across repeated LLM samples.
 - **Gemini/Groq comparison** — compares provider answers under the same evidence context.
 - **Evidence-grounded corrections** — creates a safer correction only from evidence supporting the correction.
 - **Follow-up-aware chat** — resolves short follow-ups using the preceding conversation.
 - **Math-aware verification** — deterministic checks for supported arithmetic, calculus, factorial, and determinant questions.
-- **Speech input, PDF upload, authentication, and saved conversations** — supports a practical end-user workflow.
+- **Speech input, PDF/image upload, authentication, and saved conversations** — supports a practical end-user workflow.
 
 ## How claim verification works
 
@@ -83,7 +84,7 @@ The UI shows verification confidence, source quality, source agreement, citation
 | Backend | Python, FastAPI, Pydantic, HTTPX |
 | LLM providers | Google Gemini API, Groq API |
 | Verification | DeBERTa NLI cross-encoder, Sentence Transformers / MiniLM semantic reranking |
-| Evidence | Tavily-enabled web retrieval, source-quality filtering, PyPDF document extraction |
+| Evidence | Tavily-enabled web retrieval, source-quality filtering, PyPDF extraction, PyMuPDF + Tesseract OCR for images and PDF image content |
 | Special verification | Deterministic arithmetic, calculus, factorial, and determinant rules |
 | Data and authentication | Supabase Authentication and PostgreSQL |
 | Evaluation | HaluEval held-out experiments and VeriSight custom regression suite |
@@ -124,6 +125,7 @@ render.yaml    Render deployment blueprint
 - A Gemini and/or Groq API key
 - Optional: Tavily API key for enhanced web retrieval
 - Optional: a Supabase project for authentication and persistent history
+- Optional for image/scanned-PDF text: Tesseract OCR installed locally and available on `PATH` (or configured with `TESSERACT_CMD`)
 
 ### 1. Configure environment files
 
@@ -179,6 +181,7 @@ Run a small evaluation smoke test:
 - `.env` files, API keys, virtual environments, Node modules, build output, and generated benchmark reports are excluded by `.gitignore`.
 - The frontend only uses Supabase’s publishable key; provider secrets remain on the backend.
 - Reliability is an evidence-based estimate, not a guarantee of universal truth. Missing, weak, stale, or conflicting sources should result in **Needs review**, rather than an unsupported claim being presented as verified.
+- Image support currently extracts readable text with OCR. It does not yet verify general visual facts in photographs, charts, or diagrams without text.
 
 ## Documentation
 

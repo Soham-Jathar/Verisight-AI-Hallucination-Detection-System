@@ -120,11 +120,11 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
     verification_applicable = request.verify and not recommendation_request
     evidence = []
     structured_document_answer = None
-    if verification_applicable and not math_question and request.mode in {VerificationMode.DOCUMENT, VerificationMode.HYBRID}:
+    if verification_applicable and not math_question and request.mode in {VerificationMode.DOCUMENT, VerificationMode.IMAGE, VerificationMode.HYBRID}:
         if not request.document_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Upload a PDF before using document or hybrid verification.",
+                detail="Upload a PDF or image before using its evidence for verification.",
             )
         evidence.extend(document_evidence(request.document_id, analysis_question))
         structured_document_answer = document_secondary_paper_options(request.document_id, analysis_question)
@@ -183,7 +183,7 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
         if (
             verification_applicable
             and not math_question
-            and request.mode in {VerificationMode.WEB, VerificationMode.DOCUMENT, VerificationMode.HYBRID}
+            and request.mode in {VerificationMode.WEB, VerificationMode.DOCUMENT, VerificationMode.IMAGE, VerificationMode.HYBRID}
             and any(claim.status in {"uncertain", "unsupported"} for claim in claims)
         ):
             analysis_evidence = await _expand_unresolved_claim_evidence(
@@ -191,7 +191,7 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
                 claims,
                 analysis_evidence,
                 settings=settings,
-                document_id=request.document_id if request.mode in {VerificationMode.DOCUMENT, VerificationMode.HYBRID} else None,
+                document_id=request.document_id if request.mode in {VerificationMode.DOCUMENT, VerificationMode.IMAGE, VerificationMode.HYBRID} else None,
                 include_web=request.mode in {VerificationMode.WEB, VerificationMode.HYBRID},
             )
             claims = verify_claims(answer, analysis_evidence, question=analysis_question)
