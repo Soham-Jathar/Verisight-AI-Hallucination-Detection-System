@@ -1,4 +1,4 @@
-# VeriSight — Evidence-Grounded AI Hallucination Detection System
+# VeriSight : Evidence-Grounded AI Hallucination Detection System
 
 > An independent reliability layer for LLM answers. VeriSight retrieves evidence, verifies factual claims, highlights unsupported statements, and returns citations with explainable reliability and uncertainty signals.
 
