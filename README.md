@@ -1,187 +1,146 @@
 # VeriSight : Evidence-Grounded AI Hallucination Detection System
 
-> An independent reliability layer for LLM answers. VeriSight retrieves evidence, verifies factual claims, highlights unsupported statements, and returns citations with explainable reliability and uncertainty signals.
+> A reliability layer for LLM-generated answers. VeriSight retrieves evidence, verifies factual claims, and presents citations with clear, explainable verdicts.
 
-## The problem
+## Overview
 
-Large language models can produce fluent answers even when individual facts are unsupported, incomplete, or wrong. VeriSight gives people a way to inspect those facts instead of simply trusting the answer.
+Large language models can give polished answers that contain unsupported, incomplete, or incorrect facts. VeriSight helps users inspect an answer before trusting it. It separates answer generation from factual verification, so every factual claim can be checked against relevant web or document evidence.
 
-## What VeriSight does
-
-Gemini or Groq first generates a candidate answer. VeriSight then independently checks it against web evidence, an uploaded PDF, or both.
+## How it works
 
 ```text
-Question / PDF / Voice input
-          |
-          v
-LLM answer (Gemini or Groq)
-          |
-          v
-Atomic claim extraction
-          |
-          v
-Relevant evidence retrieval and ranking
-          |
-          v
-DeBERTa Natural Language Inference verifier
-          |
-          +--> Supported / Needs review / Unsupported
-          |
-          v
-Reliability, uncertainty, citations, and evidence-grounded correction
+User question, voice input, document, or image
+                    |
+                    v
+          Candidate answer from an LLM
+                    |
+                    v
+       Atomic factual claim extraction
+                    |
+                    v
+ Evidence retrieval, filtering, and semantic ranking
+                    |
+                    v
+      NLI-based claim-to-evidence verification
+                    |
+                    v
+ Verdicts, evidence excerpts, citations, correction,
+       reliability signal, and optional uncertainty
 ```
 
 ![VeriSight end-to-end workflow](docs/verisight-complete-workflow-render.png)
 
-## Key features
+## Core capabilities
 
-- **Claim-level hallucination detection** — labels every factual claim as supported, needs review, or unsupported.
-- **Independent NLI verification** — a local DeBERTa Natural Language Inference model checks whether evidence entails, contradicts, or does not establish each claim.
-- **Web, PDF, image, and hybrid evidence modes** — verifies against retrieved sources, an uploaded document, OCR text from an image, or both.
-- **Claim-to-evidence highlighting** — lets users open the exact evidence excerpt used for each claim decision, with matching terms highlighted.
-- **Verification feedback** — users can mark an individual verification as helpful or needing correction; signed-in users retain this feedback in their saved chat history.
-- **Reliability and uncertainty signals** — separately measure evidence support and answer instability across repeated LLM samples.
-- **Gemini/Groq comparison** — compares provider answers under the same evidence context.
-- **Evidence-grounded corrections** — creates a safer correction only from evidence supporting the correction.
-- **Follow-up-aware chat** — resolves short follow-ups using the preceding conversation.
-- **Math-aware verification** — deterministic checks for supported arithmetic, calculus, factorial, and determinant questions.
-- **Speech input, PDF/image upload, authentication, and saved conversations** — supports a practical end-user workflow.
+### Claim-level verification
 
-## How claim verification works
-
-For an answer such as:
-
-> “Guido van Rossum created Python and its first version was released in 1991.”
-
-VeriSight produces two claims:
-
-1. Guido van Rossum created Python.
-2. The first version of Python was released in 1991.
-
-It selects the strongest evidence for each claim, then uses NLI to evaluate the evidence/claim pair:
+VeriSight breaks an answer into smaller factual statements instead of judging the full paragraph at once. Each claim receives one of these transparent verdicts:
 
 | Verdict | Meaning |
 |---|---|
-| **Supported** | The evidence entails the claim. |
-| **Unsupported** | The evidence contradicts the claim, or no usable evidence exists. |
-| **Needs review** | The retrieved evidence is insufficient or conflicting. |
+| **Supported** | The selected evidence establishes the claim. |
+| **Needs review** | The evidence is incomplete, indirect, or conflicting. |
+| **Unsupported** | The evidence contradicts the claim or no usable evidence was found. |
 
-The UI shows verification confidence, source quality, source agreement, citations, and overall answer reliability.
+The interface links each verdict to the evidence excerpt used for that decision, helping users see *why* a claim received its label.
 
-## Why this is more than an LLM wrapper
+### Independent verification layer
 
-| Generation layer | Verification layer |
+An LLM provider produces the candidate answer. VeriSight then independently retrieves evidence and evaluates each factual claim using Natural Language Inference (NLI). This means an answer is not accepted merely because it sounds fluent or confident.
+
+### Flexible evidence modes
+
+- **Web evidence**: retrieves and ranks relevant online sources.
+- **Document evidence**: verifies against uploaded PDF text.
+- **Image evidence**: extracts readable text from supported images using OCR.
+- **Hybrid evidence**: combines uploaded material with web research when both are useful.
+
+### Evidence-grounded correction
+
+When an answer contains unsupported claims and sufficient supporting evidence is available, VeriSight can produce a correction grounded in that evidence. The correction is shown with its citations rather than replacing the original answer silently.
+
+### User-focused experience
+
+- Continuous chat with follow-up awareness
+- Optional comparison of available LLM providers
+- Voice input through browser speech recognition
+- PDF and image upload
+- Authentication and saved conversations through Supabase
+- Per-claim evidence highlighting and verification feedback
+- Deterministic handling for supported mathematical questions
+
+## Verification pipeline
+
+| Stage | Purpose |
 |---|---|
-| Gemini / Groq writes a candidate answer. | VeriSight retrieves evidence and independently evaluates factual claims. |
-| Optimised for helpful natural-language answers. | Optimised for traceability, contradiction detection, and citation-backed feedback. |
-| Can produce an incorrect but fluent statement. | Can flag that statement as unsupported or uncertain. |
+| Answer generation | Produces a candidate response to the user’s request. |
+| Claim extraction | Identifies the factual statements that need checking. |
+| Retrieval | Finds web and/or uploaded-document evidence relevant to the question. |
+| Ranking | Uses semantic similarity and source checks to select the most relevant evidence. |
+| NLI verification | Tests whether the selected evidence entails, contradicts, or does not establish each claim. |
+| Result presentation | Shows claim verdicts, focused evidence excerpts, citations, reliability, and optional uncertainty. |
+
+## Why VeriSight is more than an LLM interface
+
+| Answer generation | VeriSight verification |
+|---|---|
+| Creates a helpful natural-language response. | Checks factual statements independently against evidence. |
+| May be fluent even when a fact is wrong. | Can flag the unsupported statement and show the evidence behind the verdict. |
+| Focuses on answering the user. | Focuses on traceability, contradiction detection, and evidence-backed feedback. |
 
 ## Technology stack
 
-| Area | Technologies |
+| Area | Technologies used |
 |---|---|
-| Frontend | React, Vite, Supabase JavaScript client |
-| Backend | Python, FastAPI, Pydantic, HTTPX |
-| LLM providers | Google Gemini API, Groq API |
-| Verification | DeBERTa NLI cross-encoder, Sentence Transformers / MiniLM semantic reranking |
-| Evidence | Tavily-enabled web retrieval, source-quality filtering, PyPDF extraction, PyMuPDF + Tesseract OCR for images and PDF image content |
-| Special verification | Deterministic arithmetic, calculus, factorial, and determinant rules |
-| Data and authentication | Supabase Authentication and PostgreSQL |
-| Evaluation | HaluEval held-out experiments and VeriSight custom regression suite |
-| Deployment configuration | Render blueprint (`render.yaml`) |
+| Frontend | React, Vite, custom CSS, Web Speech API, Supabase JavaScript client |
+| Backend | Python, FastAPI, Pydantic, HTTPX, Uvicorn |
+| Answer providers | Google Gemini API and Groq API |
+| Claim verification | DeBERTa NLI cross-encoder and Sentence Transformers / MiniLM semantic reranking |
+| Evidence handling | Web retrieval, source-quality filtering, PDF text extraction, PyMuPDF, Tesseract OCR |
+| Special-case checks | Deterministic arithmetic, calculus, factorial, and determinant rules |
+| Data and authentication | Supabase Authentication, PostgreSQL, and Row-Level Security |
+| Evaluation | HaluEval-based experiments and a custom regression suite |
 
-## Evaluation
+## Evaluation approach
 
-The `evaluation/` module tests the verification layer on fixed labelled claim/evidence examples. It does not consume Gemini, Groq, or web-search API quota.
+The `evaluation/` module evaluates the verification layer on labelled claim-and-evidence examples. It is separate from normal user chats and does not rely on an LLM provider or web-search quota during evaluation.
 
-The final HaluEval QA held-out experiment recorded:
+The evaluation workflow uses:
 
-| Measure | Result |
-|---|---:|
-| Cases | 400 |
-| Accuracy | 68.25% |
-| Macro F1 | 71.00% |
-| Factual-claim subset accuracy | 70.73% |
-| Hallucination-risk F1 | 72.51% |
+- Held-out HaluEval data to measure verification behavior on unseen examples.
+- A custom regression suite for project-specific cases such as retrieval ambiguity, citations, documents, mathematics, and follow-up context.
+- Standard classification measures and verification latency to track changes over time.
 
-These results measure claim verification, not the fluency of the LLM answer. See [evaluation/README.md](evaluation/README.md) for metrics, reproduction commands, and limitations.
+See [evaluation/README.md](evaluation/README.md) for the methodology, commands, and limitations.
 
 ## Repository structure
 
 ```text
-backend/       FastAPI API, retrieval, generation, verification, and tests
-frontend/      React chat interface, authentication, history, and evidence UI
-evaluation/    HaluEval import, metric calculation, datasets, and regression cases
+backend/       FastAPI API, generation, retrieval, verification, and tests
+frontend/      React interface, authentication, chat history, and evidence UI
+evaluation/    dataset utilities, metrics, and regression cases
 docs/          workflow diagrams, database schema, and literature survey
-render.yaml    Render deployment blueprint
 ```
 
 ## Run locally
 
-### Prerequisites
+1. Copy the example environment files in `backend/` and `frontend/`.
+2. Add provider credentials only to the backend environment file. Keep secrets out of version control.
+3. Follow the setup and run instructions in the component documentation:
+   - [Backend setup](backend/README.md)
+   - [Frontend setup](frontend/README.md)
+4. Install Tesseract OCR if you want text extraction from images or scanned PDFs. Configure its executable path through the backend environment file when it is not available on your system path.
 
-- Python 3.11 recommended
-- Node.js 20+ recommended
-- A Gemini and/or Groq API key
-- Optional: Tavily API key for enhanced web retrieval
-- Optional: a Supabase project for authentication and persistent history
-- Optional for image/scanned-PDF text: Tesseract OCR installed locally and available on `PATH` (or configured with `TESSERACT_CMD`)
+## Testing
 
-### 1. Configure environment files
+Run the backend test suite from the project root after configuring the environment. Use the evaluation module separately when you want to reproduce verification experiments or check regression cases.
 
-Create these files from the included examples. Never commit real keys.
+## Security, privacy, and scope
 
-```text
-backend/.env    ← copy backend/.env.example
-frontend/.env   ← copy frontend/.env.example
-```
-
-Add at least one provider key in `backend/.env`.
-
-### 2. Start the backend
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Verify it is available at `http://127.0.0.1:8000/health`.
-
-### 3. Start the frontend
-
-Open a second terminal:
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`.
-
-## Tests
-
-From the project root:
-
-```powershell
-.\backend\.venv\Scripts\python.exe -m pytest backend\tests -q
-```
-
-Run a small evaluation smoke test:
-
-```powershell
-.\backend\.venv\Scripts\python.exe evaluation\run.py --limit 3
-```
-
-## Security and privacy
-
-- `.env` files, API keys, virtual environments, Node modules, build output, and generated benchmark reports are excluded by `.gitignore`.
-- The frontend only uses Supabase’s publishable key; provider secrets remain on the backend.
-- Reliability is an evidence-based estimate, not a guarantee of universal truth. Missing, weak, stale, or conflicting sources should result in **Needs review**, rather than an unsupported claim being presented as verified.
-- Image support currently extracts readable text with OCR. It does not yet verify general visual facts in photographs, charts, or diagrams without text.
+- Environment files, provider keys, virtual environments, dependencies, build output, and generated reports are excluded through `.gitignore`.
+- Provider secrets stay on the backend. The frontend uses only the Supabase publishable configuration required for authentication.
+- Reliability is an evidence-based estimate, not a guarantee of universal truth. Missing, weak, outdated, or conflicting evidence should be reviewed carefully.
+- Image support currently extracts readable text through OCR. It does not yet verify visual details in photographs, charts, or diagrams that contain no readable text.
 
 ## Documentation
 
