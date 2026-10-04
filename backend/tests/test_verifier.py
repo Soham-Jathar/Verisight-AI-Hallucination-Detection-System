@@ -272,6 +272,15 @@ def test_verify_claims_marks_supported_overlap() -> None:
     assert reliability_score(claims) > 0.5
 
 
+def test_missing_evidence_does_not_mean_the_claim_was_contradicted() -> None:
+    claims = verify_claims("Guido van Rossum created Python.", [])
+
+    assert len(claims) == 1
+    assert claims[0].status == "uncertain"
+    assert claims[0].confidence == 0.0
+    assert "not been verified or contradicted" in claims[0].rationale
+
+
 def test_near_verbatim_evidence_overrides_a_single_false_nli_contradiction(monkeypatch) -> None:
     class FalseContradictionModel:
         model = SimpleNamespace(

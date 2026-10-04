@@ -809,16 +809,28 @@ async def retrieve_web_evidence(
             web_results = []
             official_results = []
 
+    return rank_web_candidates(
+        question,
+        [
+            *tavily_results,
+            *identity_results,
+            *official_results,
+            *web_results,
+            *wikipedia_results,
+            *ddg_results,
+        ],
+    )
+
+
+def rank_web_candidates(question: str, candidates: list[EvidenceSource]) -> list[EvidenceSource]:
+    """Apply the production citation filters and ranking to search candidates.
+
+    Kept separate from network search so recorded candidates can be replayed
+    through the same selection logic during offline pipeline evaluation.
+    """
     merged: list[EvidenceSource] = []
     source_indexes: dict[tuple[str, str], int] = {}
-    for source in [
-        *tavily_results,
-        *identity_results,
-        *official_results,
-        *web_results,
-        *wikipedia_results,
-        *ddg_results,
-    ]:
+    for source in candidates:
         source = enrich_source(source)
         key = _source_merge_key(source)
         if (

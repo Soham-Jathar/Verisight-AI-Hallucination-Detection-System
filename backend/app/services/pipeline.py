@@ -20,7 +20,6 @@ from app.services.uncertainty import estimate_uncertainty
 from app.services.verifier import (
     limit_factual_answer,
     reliability_score,
-    select_citations,
     select_verification_sources,
     verify_claims,
 )
@@ -100,6 +99,26 @@ async def _expand_unresolved_claim_evidence(
     results = await asyncio.gather(*searches, return_exceptions=True) if searches else []
     successful = [result for result in results if isinstance(result, list)]
     return _merge_evidence(evidence, *document_results, *successful)
+
+
+def _verified_correction(
+    answer: str,
+    question: str,
+    evidence: list[EvidenceSource],
+) -> CorrectedAnswer | None:
+    """Display a correction only when each extracted claim passes verification."""
+    candidate = limit_factual_answer(answer, question=question)
+    assessments = verify_claims(candidate, evidence, question=question)
+    if not assessments or any(
+        assessment.status != "supported"
+        or not assessment.citations
+        or "Keyword evidence match was used as a fallback" in assessment.rationale
+        for assessment in assessments
+    ):
+        return None
+
+    citations = _merge_evidence(*(assessment.citations for assessment in assessments))
+    return CorrectedAnswer(answer=candidate, citations=citations)
 
 
 async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> AnalyzeResponse:
@@ -205,7 +224,9 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
                 answer=answer,
                 claims=claims,
                 reliability_score=(
-                    reliability_score(claims) if verification_applicable and claims else None
+                    reliability_score(claims)
+                    if verification_applicable and claims and analysis_evidence
+                    else None
                 ),
             )
         )
@@ -230,15 +251,18 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
             if source.url.startswith("document://")
         ][:1]
     if verification_applicable and not math_question and primary_evidence and unsupported:
-        # A correction must be based on evidence that already supported at
-        # least one assessed claim. Giving the generator every retrieved page
-        # invites it to add loosely related details from an uncertain source.
-        supported_claims = [claim for claim in claims if claim.status == "supported"]
-        correction_evidence = select_verification_sources(
-            supported_claims,
-            primary_evidence,
-            limit=3,
-        )
+        # Keep the full text of sources cited for supported or contradicted
+        # claims. A claim-focused citation may omit the very fact needed to
+        # repair an unsupported claim (for example the correct year).
+        correction_urls = {
+            source.url
+            for claim in claims
+            if claim.status in {"supported", "unsupported"}
+            for source in claim.citations
+        }
+        correction_evidence = [
+            source for source in primary_evidence if source.url in correction_urls
+        ][:3]
         try:
             if correction_evidence:
                 corrected_answer, _ = await generate_correction(
@@ -251,14 +275,11 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
                     settings=settings,
                     provider=primary.provider,
                 )
-                correction_citations = select_citations(corrected_answer, correction_evidence)
-                # A correction without a directly relevant citation would look
-                # authoritative while being no safer than the original answer.
-                if correction_citations:
-                    correction = CorrectedAnswer(
-                        answer=corrected_answer,
-                        citations=correction_citations,
-                    )
+                correction = _verified_correction(
+                    corrected_answer,
+                    analysis_question,
+                    correction_evidence,
+                )
         except ValueError:
             # A correction is helpful but must never hide the original analysis result.
             correction = None

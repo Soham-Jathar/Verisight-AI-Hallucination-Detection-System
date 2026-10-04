@@ -7,6 +7,7 @@ from app.services.retrieval import (
     _keywords,
     _relation_parts,
     _research_query,
+    rank_web_candidates,
     _select_diverse_sources,
     _source_merge_key,
     _subject_query,
@@ -36,6 +37,24 @@ def test_creator_question_rejects_unrelated_creator_result() -> None:
 
     assert not _has_topic_anchor(question, unrelated)
     assert _has_topic_anchor(question, relevant)
+
+
+def test_recorded_web_candidates_use_production_filters() -> None:
+    question = "Who created the Python programming language?"
+    unrelated = EvidenceSource(
+        title="Python snake",
+        url="https://example.com/snake",
+        snippet="A python is a large snake found in many regions.",
+    )
+    relevant = EvidenceSource(
+        title="Python (programming language)",
+        url="https://en.wikipedia.org/wiki/Python_(programming_language)",
+        snippet="Python is a programming language created by Guido van Rossum.",
+    )
+
+    assert rank_web_candidates(question, [unrelated, relevant]) == [
+        relevant.model_copy(update={"credibility": 0.72, "source_quality": "Encyclopedia"})
+    ]
 
 
 def test_common_technical_aliases_are_canonicalized() -> None:

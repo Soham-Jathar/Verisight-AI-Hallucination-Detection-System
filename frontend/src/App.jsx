@@ -182,13 +182,13 @@ function AuthDialog({ open, recoveryRequested, onClose, onAuthenticated, onRecov
 function VerificationCard({ result, feedback = {}, onFeedback }) {
   const [expandedClaim, setExpandedClaim] = useState(null)
   if (!result?.claims?.length) return null
-  const reliability = Math.round((result.reliability_score ?? 0) * 100)
+  const reliability = result.reliability_score == null ? null : Math.round(result.reliability_score * 100)
   const uncertainty = result.uncertainty_score == null ? null : Math.round(result.uncertainty_score * 100)
   const citedUrls = new Set(result.claims.flatMap((claim) => (claim.citations ?? []).map((source) => source.url)))
   const otherSources = (result.evidence ?? []).filter((source) => !citedUrls.has(source.url))
 
   return <details className="verification-card">
-    <summary><span className="verification-dot"></span>Verification available<strong>{reliability}% reliable{uncertainty !== null ? ` · ${uncertainty}% uncertainty` : ''}</strong></summary>
+    <summary><span className="verification-dot"></span>{reliability === null ? 'Verification unavailable' : 'Verification available'}<strong>{reliability === null ? 'Not verified' : `${reliability}% reliable`}{uncertainty !== null ? ` · ${uncertainty}% uncertainty` : ''}</strong></summary>
     <div className="verification-content">
       <p className="verification-summary">{result.message}</p>
       <div className="claim-list">

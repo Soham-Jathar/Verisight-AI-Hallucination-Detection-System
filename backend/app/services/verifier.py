@@ -656,7 +656,7 @@ def _score_labels(model, scores: list[float]) -> dict[str, float]:
 
 def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float, str, float]:
     if not evidence:
-        return "unsupported", 0.0, "No evidence source was available for this claim.", 0.0
+        return "uncertain", 0.0, "No evidence source was available for this claim; it has not been verified or contradicted.", 0.0
 
     document_section_support = _document_section_count_support(claim, evidence)
     if document_section_support:
@@ -1032,7 +1032,9 @@ def limit_factual_answer(answer: str, *, question: str = "", limit: int = 6) -> 
 
 def _fallback_assessment(claim: str, evidence: list[EvidenceSource], reason: str) -> ClaimAssessment:
     overlap = max((_evidence_match(claim, source) for source in evidence), default=0.0)
-    status = "supported" if overlap >= 0.70 else "uncertain" if overlap >= 0.25 else "unsupported"
+    # Keyword overlap cannot establish a contradiction, especially when no
+    # source was retrieved. Leave those claims for review when NLI is absent.
+    status = "supported" if overlap >= 0.70 else "uncertain"
     return ClaimAssessment(
         claim=claim,
         status=status,

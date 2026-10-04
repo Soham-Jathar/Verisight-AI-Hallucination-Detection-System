@@ -1,11 +1,14 @@
+import asyncio
+
 import pytest
 import httpx
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import app
-from app.schemas import ClaimAssessment, EvidenceSource
-from app.services.pipeline import _claims_needing_focused_evidence, _merge_evidence
+from app.schemas import AnalyzeRequest, ClaimAssessment, EvidenceSource, LLMProvider
+from app.services import pipeline
+from app.services.pipeline import _claims_needing_focused_evidence, _merge_evidence, _verified_correction
 from app.services.generator import _connection_error, _document_grounding_instruction, _list_answer_instruction
 
 
@@ -76,6 +79,71 @@ def test_unresolved_claims_receive_focused_evidence_retrieval() -> None:
         "Missing date.",
         "Potentially contradicted event.",
     ]
+
+
+def test_no_evidence_response_has_no_reliability_percentage(monkeypatch) -> None:
+    async def no_sources(*_args, **_kwargs):
+        return []
+
+    async def generated_answer(*_args, **_kwargs):
+        return "Guido van Rossum created Python.", "recorded-model"
+
+    monkeypatch.setattr(pipeline, "retrieve_web_evidence", no_sources)
+    monkeypatch.setattr(pipeline, "generate_answer", generated_answer)
+    response = asyncio.run(pipeline.run_analysis(
+        AnalyzeRequest(question="Who created Python?", provider=LLMProvider.GEMINI),
+        settings=Settings(_env_file=None),
+    ))
+
+    assert response.claims[0].status == "uncertain"
+    assert response.reliability_score is None
+    assert response.evidence == []
+
+
+def test_correction_is_hidden_if_any_new_claim_needs_review(monkeypatch) -> None:
+    source = EvidenceSource(title="Python", url="https://example.com/python", snippet="Guido van Rossum created Python.")
+    monkeypatch.setattr(pipeline, "verify_claims", lambda *_args, **_kwargs: [
+        ClaimAssessment(claim="Guido van Rossum created Python.", status="supported", confidence=0.99, rationale="entailed", citations=[source]),
+        ClaimAssessment(claim="Python was first released in 1980.", status="uncertain", confidence=0.55, rationale="not established"),
+    ])
+
+    assert _verified_correction(
+        "Guido van Rossum created Python. Python was first released in 1980.",
+        "Who created Python?",
+        [source],
+    ) is None
+
+
+def test_verified_correction_uses_the_rechecked_claim_citation(monkeypatch) -> None:
+    source = EvidenceSource(title="Python", url="https://example.com/python", snippet="Guido van Rossum created Python.")
+    monkeypatch.setattr(pipeline, "verify_claims", lambda *_args, **_kwargs: [
+        ClaimAssessment(claim="Guido van Rossum created Python.", status="supported", confidence=0.99, rationale="entailed", citations=[source]),
+    ])
+
+    correction = _verified_correction("Guido van Rossum created Python.", "Who created Python?", [source])
+
+    assert correction is not None
+    assert correction.citations == [source]
+
+
+def test_verified_correction_keeps_excerpts_for_multiple_claims_on_one_page(monkeypatch) -> None:
+    creator = EvidenceSource(title="Python", url="https://example.com/python", snippet="Guido van Rossum created Python.")
+    release = EvidenceSource(title="Python", url="https://example.com/python", snippet="Python was first released in 1991.")
+    monkeypatch.setattr(pipeline, "verify_claims", lambda *_args, **_kwargs: [
+        ClaimAssessment(claim="Guido van Rossum created Python.", status="supported", confidence=0.99, rationale="entailed", citations=[creator]),
+        ClaimAssessment(claim="Python was first released in 1991.", status="supported", confidence=0.99, rationale="entailed", citations=[release]),
+    ])
+
+    correction = _verified_correction(
+        "Guido van Rossum created Python. Python was first released in 1991.",
+        "When was Python first released?",
+        [creator, release],
+    )
+
+    assert correction is not None
+    assert len(correction.citations) == 1
+    assert "created Python" in correction.citations[0].snippet
+    assert "released in 1991" in correction.citations[0].snippet
 
 
 def test_document_only_generation_requires_exact_document_values() -> None:

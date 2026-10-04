@@ -4,6 +4,40 @@ This module measures the **claim-verification layer**, not whether Gemini or
 Groq produces fluent answers. It runs fixed, labelled claim/evidence pairs so
 it does not consume LLM, Tavily, or search API quota.
 
+The separate [pipeline replay](run_pipeline.py) evaluates question handling,
+web candidate filtering/ranking, claim extraction, verdicts, citations, and
+the correction gate together. Its recorded candidates and answers make the
+run repeatable without API calls. It does not test whether a live search engine
+would discover those candidates or whether a live LLM would generate the
+recorded answer.
+
+## Pipeline replay and live trace collection
+
+From the project root:
+
+```powershell
+.\backend\.venv\Scripts\python.exe evaluation\run_pipeline.py
+```
+
+Cases in `datasets/pipeline_replay.jsonl` contain a question, recorded candidate
+sources, a recorded answer, and expected claim verdicts and citations. The
+runner applies the same source filters and ranking as web mode, then calls the
+normal analysis pipeline with recorded provider outputs. Its report attributes
+failures to retrieval, claim extraction, verdict, citation, or correction.
+PDF and image replay cases start from already extracted text; OCR and PDF text
+extraction are tested separately in the backend test suite.
+
+To collect real web and LLM outputs for **human labelling**, use:
+
+```powershell
+.\backend\.venv\Scripts\python.exe evaluation\run_pipeline.py --live --provider gemini
+```
+
+Live collection uses provider and search API calls. It saves raw traces and
+does not calculate accuracy from the replay labels, because live answers and
+retrieved pages can differ. Review and label those traces before reporting
+live pipeline performance.
+
 The verifier intentionally excludes purely conversational content such as
 greetings, acknowledgements, questions, and personal preferences. In the app,
 such a response is shown as **not requiring factual verification** rather than
