@@ -262,6 +262,7 @@ function App() {
   const [document, setDocument] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [listening, setListening] = useState(false)
+  const [inputMenuOpen, setInputMenuOpen] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [user, setUser] = useState(null)
@@ -272,7 +273,24 @@ function App() {
   const [renameDraft, setRenameDraft] = useState('')
   const pdfInputRef = useRef(null)
   const imageInputRef = useRef(null)
+  const inputPickerRef = useRef(null)
   const recognitionRef = useRef(null)
+
+  useEffect(() => {
+    if (!inputMenuOpen) return undefined
+    function closeOnOutsideClick(event) {
+      if (!inputPickerRef.current?.contains(event.target)) setInputMenuOpen(false)
+    }
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setInputMenuOpen(false)
+    }
+    window.document.addEventListener('pointerdown', closeOnOutsideClick)
+    window.document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.document.removeEventListener('pointerdown', closeOnOutsideClick)
+      window.document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [inputMenuOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -486,10 +504,25 @@ function App() {
     recognition.start()
   }
 
+  function chooseInput(action) {
+    setInputMenuOpen(false)
+    if (action === 'pdf') pdfInputRef.current?.click()
+    if (action === 'image') imageInputRef.current?.click()
+    if (action === 'voice') startListening()
+  }
+
+  function handleComposerKeyDown(event) {
+    if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    if (!loading && !uploading && apiStatus === 'online' && draft.trim().length >= 3) {
+      event.currentTarget.form?.requestSubmit()
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     const question = draft.trim()
-    if (question.length < 3 || loading || !activeConversation) return
+    if (question.length < 3 || loading || uploading || apiStatus !== 'online' || !activeConversation) return
     if ((evidenceMode === 'document' || evidenceMode === 'image' || evidenceMode === 'hybrid') && !document) { setError('Attach a PDF or image before using its evidence.'); return }
 
     const conversationId = activeConversation.id
@@ -566,11 +599,16 @@ function App() {
         <div className="composer-row">
           <input ref={pdfInputRef} type="file" accept="application/pdf" hidden onChange={(event) => uploadAttachment(event, '/api/documents', 'document', 'PDF upload failed.')} />
           <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => uploadAttachment(event, '/api/images', 'image', 'Image upload failed.')} />
-          <button className="utility-button" type="button" onClick={() => pdfInputRef.current?.click()} disabled={uploading || loading}>{uploading ? 'Uploading...' : 'Attach PDF'}</button>
-          <button className="utility-button" type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading || loading}>{uploading ? 'Uploading...' : 'Attach image'}</button>
-          <button className={`utility-button ${listening ? 'listening' : ''}`} type="button" onClick={startListening} disabled={loading}>{listening ? 'Listening...' : 'Voice'}</button>
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Message VeriSight..." aria-label="Message VeriSight" rows="1" />
-          <button className="send-button" type="submit" disabled={loading || apiStatus !== 'online' || draft.trim().length < 3}>{loading ? 'Working...' : 'Send'}</button>
+          <div className="input-picker" ref={inputPickerRef}>
+            <button className={`input-picker-trigger ${listening ? 'listening' : ''}`} type="button" aria-label="Choose input type" aria-expanded={inputMenuOpen} aria-controls="input-options" onClick={() => setInputMenuOpen((open) => !open)} disabled={uploading || loading} title="Choose input type">{uploading ? '…' : '+'}</button>
+            {inputMenuOpen && <div className="input-options" id="input-options">
+              <button type="button" onClick={() => chooseInput('pdf')}>Upload PDF</button>
+              <button type="button" onClick={() => chooseInput('image')}>Upload image</button>
+              <button type="button" onClick={() => chooseInput('voice')}>{listening ? 'Stop voice input' : 'Voice input'}</button>
+            </div>}
+          </div>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="Message VeriSight..." aria-label="Message VeriSight" aria-keyshortcuts="Enter" rows="1" />
+          <button className="send-button" type="submit" disabled={loading || uploading || apiStatus !== 'online' || draft.trim().length < 3}>{loading ? 'Working...' : 'Send'}</button>
         </div>
         <p>{verifyEnabled ? `Verification is on: using ${evidenceMode === 'document' ? 'your PDF' : evidenceMode === 'image' ? 'text extracted from your image' : evidenceMode === 'hybrid' ? `web and your ${document?.kind === 'image' ? 'image text' : 'PDF'}` : 'web evidence'}.${uncertaintyEnabled ? ' Uncertainty uses two additional answer samples.' : ''}` : 'Verification is off: this response will not receive a reliability score.'}</p>
         {error && <strong className="error">{error}</strong>}

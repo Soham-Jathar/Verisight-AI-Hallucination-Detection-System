@@ -23,14 +23,18 @@
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }
 .composer .composer-row textarea { flex: 1; min-width: 0; width: auto; padding: 14px 15px 12px; }
 .composer .composer-row button { position: static; }
-.composer .utility-button { align-self: stretch; color: #cbd6ef; border: 1px solid #9eafe235; background: #26324f; white-space: nowrap; }
-.composer .utility-button:hover { background: #334269; }
-.composer .utility-button.listening { background: #a94f65; box-shadow: 0 0 0 3px #e1748d22; }
+.input-picker { position: relative; flex: none; align-self: stretch; }
+.composer .input-picker-trigger { height: 100%; min-width: 47px; padding: 0 10px; color: #d9e2f7; border: 1px solid #9eafe235; background: #26324f; font-size: 24px; line-height: 1; }
+.composer .input-picker-trigger:hover, .composer .input-picker-trigger[aria-expanded="true"] { background: #334269; }
+.composer .input-picker-trigger.listening { background: #a94f65; box-shadow: 0 0 0 3px #e1748d22; }
+.input-options { position: absolute; z-index: 4; bottom: calc(100% + 9px); left: 0; display: grid; gap: 2px; min-width: 188px; padding: 5px; border: 1px solid #9eafe249; border-radius: 9px; background: #202b45; box-shadow: 0 14px 32px #050a1899; }
+.composer .input-options button { width: 100%; padding: 10px 11px; color: #e2e9f9; border-radius: 6px; background: transparent; text-align: left; font-size: 12px; }
+.composer .input-options button:hover, .composer .input-options button:focus-visible { background: #35456b; }
 .composer .send-button { align-self: stretch; min-width: 57px; }
 .document-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 9px; padding: 6px 8px 6px 10px; color: #c9d5f1; border: 1px solid #9eafe235; border-radius: 7px; background: #202c48; font-size: 10px; }
 .document-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer .document-chip button { position: static; padding: 0 4px; color: #b9c7e8; background: transparent; font-size: 16px; line-height: 1; }
-@media (max-width: 760px) { .chat-controls { gap: 8px; }.provider-select select { max-width: 96px; }.composer-row { gap: 6px; }.composer .utility-button { width: 37px; padding: 5px; overflow: hidden; color: transparent; }.composer .utility-button::first-letter { color: #cbd6ef; }.composer .send-button { min-width: 48px; padding-inline: 6px; } }
+@media (max-width: 760px) { .chat-controls { gap: 8px; }.provider-select select { max-width: 96px; }.composer-row { gap: 6px; }.composer .input-picker-trigger { min-width: 42px; padding-inline: 6px; }.composer .send-button { min-width: 48px; padding-inline: 6px; } }
 
 .account-panel { display: grid; gap: 7px; margin-top: 14px; padding-top: 13px; border-top: 1px solid #a6b8e41a; }
 .claim-citations { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; margin-top: 7px; color: #8292b2; }
