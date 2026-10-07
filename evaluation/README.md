@@ -23,9 +23,25 @@ Cases in `datasets/pipeline_replay.jsonl` contain a question, recorded candidate
 sources, a recorded answer, and expected claim verdicts and citations. The
 runner applies the same source filters and ranking as web mode, then calls the
 normal analysis pipeline with recorded provider outputs. Its report attributes
-failures to retrieval, claim extraction, verdict, citation, or correction.
+failures to retrieval, claim extraction, verdict, citation, reliability display,
+or correction. Each case can specify a `slice`, and `pipeline_summary.json`
+breaks pass counts and failure stages down by slice. The current curated cases
+cover web, document, image-extracted text, hybrid, follow-up, math, and
+non-factual requests, including insufficient and contradictory evidence.
 PDF and image replay cases start from already extracted text; OCR and PDF text
 extraction are tested separately in the backend test suite.
+
+These cases are **regression checks**, not an unbiased estimate of production
+accuracy. Failing cases are retained for diagnosis rather than relabelled to
+match the current verifier. A larger independently labelled set and live-source
+review would be needed for a generalization claim.
+
+An [independent review workflow](annotation/README.md) now prepares blinded
+HaluEval QA, dialogue, and summarization cases for two team reviewers. It
+separates source groups into development and held-out portions before labelling,
+checks reviewer agreement, and requires manual adjudication of disagreements.
+The reviewers' files contain no benchmark reference labels. This is a pilot
+answer-level evaluation, not a live retrieval or citation benchmark.
 
 To collect real web and LLM outputs for **human labelling**, use:
 

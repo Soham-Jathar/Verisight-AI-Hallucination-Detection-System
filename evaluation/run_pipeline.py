@@ -28,16 +28,31 @@ from app.services.retrieval import rank_web_candidates  # noqa: E402
 
 DEFAULT_DATASET = ROOT / "evaluation" / "datasets" / "pipeline_replay.jsonl"
 DEFAULT_RESULTS = ROOT / "evaluation" / "results"
+VALID_STATUSES = {"supported", "unsupported", "uncertain"}
 
 
 def load_cases(path: Path) -> list[dict]:
     cases: list[dict] = []
+    seen_ids: set[str] = set()
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
-        case = json.loads(line)
-        if not isinstance(case, dict) or not all(key in case for key in ("id", "question")):
-            raise ValueError(f"Pipeline case on line {line_number} needs id and question.")
+        try:
+            case = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON on pipeline case line {line_number}: {exc.msg}.") from exc
+        if not isinstance(case, dict) or not all(isinstance(case.get(key), str) and case[key].strip() for key in ("id", "question")):
+            raise ValueError(f"Pipeline case on line {line_number} needs nonempty id and question.")
+        if case["id"] in seen_ids:
+            raise ValueError(f"Duplicate pipeline case id {case['id']!r} on line {line_number}.")
+        seen_ids.add(case["id"])
+        if not isinstance(case.get("slice", "unspecified"), str) or not case.get("slice", "unspecified").strip():
+            raise ValueError(f"Pipeline case {case['id']!r} needs a nonempty slice.")
+        if not isinstance(case.get("expected_claims", []), list):
+            raise ValueError(f"Pipeline case {case['id']!r} needs an expected_claims list.")
+        for expected in case.get("expected_claims", []):
+            if not isinstance(expected, dict) or not isinstance(expected.get("claim"), str) or expected.get("status") not in VALID_STATUSES:
+                raise ValueError(f"Pipeline case {case['id']!r} has an invalid expected claim.")
         cases.append(case)
     if not cases:
         raise ValueError("The pipeline dataset has no cases.")
@@ -63,6 +78,13 @@ def diagnose(case: dict, response: dict, retrieved_urls: list[str]) -> list[str]
             source["url"] for source in actual["citations"]
         }:
             failures.append("citation_error")
+
+    if case.get("expect_no_claims") and response["claims"]:
+        failures.append("spurious_claim")
+    if "expect_reliability" in case:
+        has_reliability = response["reliability_score"] is not None
+        if has_reliability != case["expect_reliability"]:
+            failures.append("reliability_display_error")
 
     if "expect_correction" in case:
         has_correction = response["correction"] is not None
@@ -117,6 +139,7 @@ async def replay_case(case: dict, settings: Settings) -> dict:
     failures = diagnose(case, response, retrieved_urls)
     return {
         "id": case["id"],
+        "slice": case.get("slice", case.get("mode", "web")),
         "question": case["question"],
         "passed": not failures,
         "failure_stages": failures,
@@ -135,6 +158,23 @@ async def live_case(case: dict, settings: Settings, provider: LLMProvider) -> di
         "question": case["question"],
         "review_required": True,
         "response": response.model_dump(mode="json"),
+    }
+
+
+def summarize_replay_results(results: list[dict]) -> dict:
+    failures = Counter(stage for result in results for stage in result["failure_stages"])
+    slices: dict[str, dict] = {}
+    for result in results:
+        slice_result = slices.setdefault(result["slice"], {"cases": 0, "passed": 0, "failure_stages": {}})
+        slice_result["cases"] += 1
+        slice_result["passed"] += int(result["passed"])
+        for stage in result["failure_stages"]:
+            slice_result["failure_stages"][stage] = slice_result["failure_stages"].get(stage, 0) + 1
+    return {
+        "cases": len(results),
+        "passed": sum(result["passed"] for result in results),
+        "failure_stages": dict(failures),
+        "by_slice": slices,
     }
 
 
@@ -175,10 +215,9 @@ def main() -> int:
     if args.live:
         print(f"Collected {len(results)} live trace(s) for human review: {output}")
     else:
-        failures = Counter(stage for result in results for stage in result["failure_stages"])
-        summary = {"cases": len(results), "passed": sum(result["passed"] for result in results), "failure_stages": dict(failures)}
+        summary = summarize_replay_results(results)
         (output / "pipeline_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        print(f"Pipeline replay: {summary['passed']}/{summary['cases']} passed | failures: {dict(failures)}")
+        print(f"Pipeline replay: {summary['passed']}/{summary['cases']} passed | failures: {summary['failure_stages']}")
         print(f"Reports written to: {output}")
     return 0
 

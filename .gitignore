@@ -13,6 +13,7 @@ evaluation/__pycache__/
 evaluation/results/
 evaluation/vendor/
 evaluation/datasets/halueval_*.jsonl
+evaluation/annotation/work/
 
 # Secrets and local settings
 .env
