@@ -225,7 +225,7 @@ async def run_analysis(request: AnalyzeRequest, *, settings: Settings) -> Analyz
                 claims=claims,
                 reliability_score=(
                     reliability_score(claims)
-                    if verification_applicable and claims and analysis_evidence
+                    if verification_applicable and claims and (analysis_evidence or math_question)
                     else None
                 ),
             )

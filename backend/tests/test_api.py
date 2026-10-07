@@ -100,6 +100,21 @@ def test_no_evidence_response_has_no_reliability_percentage(monkeypatch) -> None
     assert response.evidence == []
 
 
+def test_math_verification_without_web_evidence_has_reliability(monkeypatch) -> None:
+    async def generated_answer(*_args, **_kwargs):
+        return "2 + 2 = 4.", "recorded-model"
+
+    monkeypatch.setattr(pipeline, "generate_answer", generated_answer)
+    response = asyncio.run(pipeline.run_analysis(
+        AnalyzeRequest(question="What is 2 + 2?", provider=LLMProvider.GEMINI),
+        settings=Settings(_env_file=None),
+    ))
+
+    assert response.claims[0].status == "supported"
+    assert response.reliability_score is not None
+    assert "Reliability score:" in response.message
+
+
 def test_correction_is_hidden_if_any_new_claim_needs_review(monkeypatch) -> None:
     source = EvidenceSource(title="Python", url="https://example.com/python", snippet="Guido van Rossum created Python.")
     monkeypatch.setattr(pipeline, "verify_claims", lambda *_args, **_kwargs: [

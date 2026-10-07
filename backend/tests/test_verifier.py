@@ -363,6 +363,111 @@ def test_conflicting_year_for_the_same_event_is_unsupported() -> None:
     assert "different year" in rationale
 
 
+def test_denied_year_is_not_treated_as_direct_support() -> None:
+    evidence = [EvidenceSource(
+        title="Lumen Bridge opening",
+        url="https://example.org/lumen-bridge",
+        snippet="The Lumen Bridge opened in 2020, not 2018.",
+    )]
+
+    status, _confidence, rationale, _agreement = verifier._nli_verdict(
+        "The Lumen Bridge opened in 2018.", evidence
+    )
+
+    assert status == "unsupported"
+    assert "different year" in rationale
+
+
+def test_unrelated_year_for_a_different_event_is_not_a_direct_conflict() -> None:
+    evidence = [EvidenceSource(
+        title="Lumen Bridge history",
+        url="https://example.org/lumen-bridge",
+        snippet="The Lumen Bridge construction began in 2020.",
+    )]
+
+    assert not verifier._has_conflicting_year_evidence(
+        "The Lumen Bridge opened in 2018.", evidence
+    )
+
+
+def test_denied_full_date_is_not_treated_as_direct_support() -> None:
+    evidence = [EvidenceSource(
+        title="seminar.pdf",
+        url="document://seminar",
+        snippet="The seminar is scheduled for 8 June 2028, not 9 June 2028.",
+    )]
+
+    status, _confidence, rationale, _agreement = verifier._nli_verdict(
+        "The seminar is scheduled for 9 June 2028.", evidence
+    )
+
+    assert status == "unsupported"
+    assert "different date" in rationale
+
+
+def test_positive_date_evidence_does_not_directly_support_a_negated_claim() -> None:
+    date_evidence = [EvidenceSource(
+        title="seminar.pdf",
+        url="document://seminar",
+        snippet="The seminar was scheduled for 8 June 2028.",
+    )]
+    year_evidence = [EvidenceSource(
+        title="Lumen Bridge",
+        url="https://example.org/lumen-bridge",
+        snippet="The Lumen Bridge was opened in 2020.",
+    )]
+
+    assert not verifier._has_direct_date_support(
+        "The seminar was not scheduled for 8 June 2028.", date_evidence
+    )
+    assert not verifier._has_direct_year_support(
+        "The Lumen Bridge was not opened in 2020.", year_evidence
+    )
+
+
+def test_named_location_requires_evidence_for_the_place(monkeypatch) -> None:
+    class FalseEntailmentModel:
+        model = SimpleNamespace(
+            config=SimpleNamespace(id2label={0: "contradiction", 1: "entailment", 2: "neutral"})
+        )
+
+        def predict(self, _pairs, *, apply_softmax: bool):
+            assert apply_softmax
+            return [[0.01, 0.98, 0.01]]
+
+    monkeypatch.setattr(verifier, "_nli_model", lambda: FalseEntailmentModel())
+    evidence = [EvidenceSource(
+        title="Lumen Bridge",
+        url="https://example.org/lumen-bridge-location",
+        snippet="The Lumen Bridge is a pedestrian bridge.",
+    )]
+
+    status, _confidence, rationale, _agreement = verifier._nli_verdict(
+        "The Lumen Bridge is in Northport.", evidence
+    )
+
+    assert status == "uncertain"
+    assert "named location" in rationale
+
+
+def test_decisive_image_claim_cites_the_used_paraphrased_excerpt(monkeypatch) -> None:
+    monkeypatch.setattr(
+        verifier, "_nli_verdict", lambda *_args: ("supported", 0.92, "entailed", 0.88)
+    )
+    evidence = [EvidenceSource(
+        title="poster.png",
+        url="document://exhibition-poster",
+        snippet="Exhibition opening time: 10 a.m.",
+    )]
+
+    claims = verify_claims("The exhibition opens at 10 a.m.", evidence)
+
+    assert claims[0].status == "supported"
+    assert len(claims[0].citations) == 1
+    assert claims[0].citations[0].url == "document://exhibition-poster"
+    assert "opening time" in claims[0].citations[0].snippet
+
+
 def test_exact_date_support_overrides_an_nli_outlier_for_any_named_subject(monkeypatch) -> None:
     class FalseContradictionModel:
         model = SimpleNamespace(

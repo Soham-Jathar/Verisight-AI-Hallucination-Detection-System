@@ -277,6 +277,11 @@ _MONTHS = {
     "may": "05", "june": "06", "july": "07", "august": "08",
     "september": "09", "october": "10", "november": "11", "december": "12",
 }
+_DATE_MENTION = re.compile(
+    r"\b(?:1[5-9]|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b|"
+    r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?:" + "|".join(_MONTHS) + r")\s+(?:1[5-9]|20)\d{2}\b|"
+    r"\b(?:" + "|".join(_MONTHS) + r")\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+(?:1[5-9]|20)\d{2}\b"
+)
 _NUMBER_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
     "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
@@ -306,8 +311,42 @@ def _date_signatures(text: str) -> set[str]:
     return signatures
 
 
+def _negated_temporal_mention(text: str, start: int) -> bool:
+    """Do not count a date/year explicitly denied by the evidence as support."""
+    prefix = text[max(0, start - 28):start]
+    return bool(re.search(r"\b(?:not|never|rather than|instead of)\s+(?:(?:on|in)\s+)?$", prefix))
+
+
+def _affirmed_date_signatures(text: str) -> set[str]:
+    normalized = _normalize(text)
+    return {
+        signature
+        for match in _DATE_MENTION.finditer(normalized)
+        if not _negated_temporal_mention(normalized, match.start())
+        for signature in _date_signatures(match.group())
+    }
+
+
+def _affirmed_years(text: str) -> set[str]:
+    normalized = _normalize(text)
+    # Mask denied full dates so their year cannot accidentally pass the
+    # simpler year-only rule when the day or month was disputed.
+    masked = list(normalized)
+    for match in _DATE_MENTION.finditer(normalized):
+        if _negated_temporal_mention(normalized, match.start()):
+            masked[match.start():match.end()] = " " * (match.end() - match.start())
+    text_without_denied_dates = "".join(masked)
+    return {
+        match.group()
+        for match in re.finditer(r"\b(?:1[5-9]\d{2}|20\d{2})\b", text_without_denied_dates)
+        if not _negated_temporal_mention(text_without_denied_dates, match.start())
+    }
+
+
 def _has_direct_date_support(claim: str, evidence: list[EvidenceSource]) -> bool:
     """Accept an exact, entity-aligned date before an NLI outlier can reject it."""
+    if re.search(r"\b(?:not|never)\b", _normalize(claim)):
+        return False
     claim_dates = _date_signatures(claim)
     if not claim_dates:
         return False
@@ -319,7 +358,7 @@ def _has_direct_date_support(claim: str, evidence: list[EvidenceSource]) -> bool
     for source in evidence:
         entity_alignment = _entity_text_alignment(claim, f"{source.title} {source.snippet}")
         for sentence in re.split(r"(?<=[.!?;])\s+", source.snippet):
-            if not (claim_dates & _date_signatures(sentence)):
+            if not claim_dates <= _affirmed_date_signatures(sentence):
                 continue
             sentence_terms = set(re.findall(r"[a-z0-9]+", _normalize(sentence)))
             overlap = len(claim_terms & sentence_terms) / len(claim_terms) if claim_terms else 0.0
@@ -330,6 +369,12 @@ def _has_direct_date_support(claim: str, evidence: list[EvidenceSource]) -> bool
 
 def _has_direct_year_support(claim: str, evidence: list[EvidenceSource]) -> bool:
     """Recognise an exact, entity-aligned year for the same factual event."""
+    if re.search(r"\b(?:not|never)\b", _normalize(claim)):
+        return False
+    # Matching only the year cannot establish a claim that specifies a full
+    # date; the day or month could still be wrong.
+    if _date_signatures(claim):
+        return False
     claim_years = set(re.findall(r"\b(?:1[5-9]\d{2}|20\d{2})\b", _normalize(claim)))
     if not claim_years:
         return False
@@ -343,8 +388,8 @@ def _has_direct_year_support(claim: str, evidence: list[EvidenceSource]) -> bool
         if entity_alignment < 0.67:
             continue
         for sentence in re.split(r"(?<=[.!?;])\s+", source.snippet):
-            sentence_years = set(re.findall(r"\b(?:1[5-9]\d{2}|20\d{2})\b", _normalize(sentence)))
-            if not (claim_years & sentence_years):
+            sentence_years = _affirmed_years(sentence)
+            if not claim_years <= sentence_years:
                 continue
             sentence_terms = set(re.findall(r"[a-z0-9]+", _normalize(sentence)))
             overlap = len(claim_terms & sentence_terms) / len(claim_terms) if claim_terms else 0.0
@@ -373,11 +418,38 @@ def _has_negative_year_fact_support(claim: str, evidence: list[EvidenceSource]) 
         if entity_alignment < 0.67:
             continue
         for sentence in re.split(r"(?<=[.!?;])\s+", source.snippet):
-            sentence_years = set(re.findall(r"\b(?:1[5-9]\d{2}|20\d{2})\b", _normalize(sentence)))
+            sentence_years = _affirmed_years(sentence)
             if not sentence_years or sentence_years & claim_years:
                 continue
             sentence_terms = set(re.findall(r"[a-z0-9]+", _normalize(sentence)))
             overlap = len(claim_terms & sentence_terms) / len(claim_terms) if claim_terms else 0.0
+            if overlap >= 0.55:
+                return True
+    return False
+
+
+def _has_conflicting_date_evidence(claim: str, evidence: list[EvidenceSource]) -> bool:
+    """Require the same entity and event before treating a different date as a contradiction."""
+    if re.search(r"\b(?:not|never)\b", _normalize(claim)):
+        return False
+    claim_dates = _date_signatures(claim)
+    if not claim_dates or _has_direct_date_support(claim, evidence):
+        return False
+    claim_terms = {
+        token for token in re.findall(r"[a-z0-9]+", _normalize(claim))
+        if len(token) > 2 and token not in _MONTHS and not token.isdigit()
+    }
+    if len(claim_terms) < 3:
+        return False
+    for source in evidence:
+        if _entity_text_alignment(claim, f"{source.title} {source.snippet}") < 0.67:
+            continue
+        for sentence in re.split(r"(?<=[.!?;])\s+", source.snippet):
+            sentence_dates = _affirmed_date_signatures(sentence)
+            if not sentence_dates or sentence_dates & claim_dates:
+                continue
+            sentence_terms = set(re.findall(r"[a-z0-9]+", _normalize(sentence)))
+            overlap = len(claim_terms & sentence_terms) / len(claim_terms)
             if overlap >= 0.55:
                 return True
     return False
@@ -432,6 +504,8 @@ def _has_conflicting_year_evidence(claim: str, evidence: list[EvidenceSource]) -
         or _has_negative_year_fact_support(claim, evidence)
     ):
         return False
+    if _date_signatures(claim):
+        return False
 
     claim_years = set(re.findall(r"\b(?:1[5-9]\d{2}|20\d{2})\b", _normalize(claim)))
     if not claim_years:
@@ -447,14 +521,30 @@ def _has_conflicting_year_evidence(claim: str, evidence: list[EvidenceSource]) -
 
     for source in evidence:
         entity_alignment = _entity_text_alignment(claim, f"{source.title} {source.snippet}")
+        # Some claims use an event verb not recognised by _claim_subject
+        # ("The Lumen Bridge opened..."). Require a multiword title anchor
+        # instead of broadening subject extraction for every verifier path.
+        shared_title_terms: set[str] = set()
+        if not _claim_subject(claim):
+            title_terms = {
+                token for token in re.findall(r"[a-z0-9]+", _normalize(source.title))
+                if len(token) > 3
+            }
+            shared_title_terms = claim_terms & title_terms
+            if len(shared_title_terms) >= 2 and len(shared_title_terms) / len(title_terms) >= 0.5:
+                entity_alignment = 1.0
         sentences = re.split(r"(?<=[.!?;])\s+", source.snippet)
         for sentence in sentences:
-            sentence_years = set(re.findall(r"\b(?:1[5-9]\d{2}|20\d{2})\b", _normalize(sentence)))
+            sentence_years = _affirmed_years(sentence)
             if not sentence_years or sentence_years & claim_years:
                 continue
             sentence_terms = {
                 token for token in re.findall(r"[a-z0-9]+", _normalize(sentence)) if len(token) > 2
             }
+            if shared_title_terms:
+                event_terms = claim_terms - shared_title_terms - {"the", "and", "was", "were", "for", "with", "from"}
+                if event_terms and not event_terms & sentence_terms:
+                    continue
             overlap = len(claim_terms & sentence_terms) / len(claim_terms)
             # A different date must be attached to the same entity and event,
             # not merely appear on a loosely related timeline or list page.
@@ -619,6 +709,25 @@ def _claim_evidence_citations(claim: str, evidence: list[EvidenceSource]) -> lis
     return citations
 
 
+def _missing_named_location(claim: str, evidence: list[EvidenceSource]) -> bool:
+    """A source about the right subject cannot establish a place it never names."""
+    locations = re.findall(
+        r"\b(?:in|at|near|from)\s+(?:the\s+)?([A-Z][\w-]*(?:\s+[A-Z][\w-]*){0,3})\b",
+        claim,
+    )
+    if not locations:
+        return False
+    source_tokens = {
+        token
+        for source in evidence
+        for token in re.findall(r"[a-z0-9]+", _normalize(f"{source.title} {source.snippet}"))
+    }
+    return any(
+        not set(re.findall(r"[a-z0-9]+", _normalize(location))) <= source_tokens
+        for location in locations
+    )
+
+
 @lru_cache
 def _nli_model():
     """Load once, on the first verified answer instead of during API startup."""
@@ -666,7 +775,8 @@ def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float
             "The uploaded document's explicit section headings support this count.",
             0.88,
         )
-    if _has_direct_date_support(claim, evidence):
+    missing_location = _missing_named_location(claim, evidence)
+    if not missing_location and _has_direct_date_support(claim, evidence):
         return (
             "supported",
             0.95,
@@ -680,7 +790,7 @@ def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float
             "Retrieved evidence gives a different year, which supports this negated claim.",
             0.88,
         )
-    if _has_direct_year_support(claim, evidence):
+    if not missing_location and _has_direct_year_support(claim, evidence):
         return (
             "supported",
             0.92,
@@ -693,6 +803,13 @@ def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float
             0.82,
             "Retrieved evidence describes this event as unverified or disputed, not an established fact.",
             0.55,
+        )
+    if _has_conflicting_date_evidence(claim, evidence):
+        return (
+            "unsupported",
+            0.86,
+            "Retrieved evidence gives a different date for the same event.",
+            0.70,
         )
     if _has_conflicting_year_evidence(claim, evidence):
         return (
@@ -768,6 +885,8 @@ def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float
         and entailment_votes > contradiction_votes
         and best_entailment >= best_neutral
     ):
+        if missing_location:
+            return "uncertain", best_entailment, "The retrieved evidence does not establish the named location.", agreement
         return "supported", best_entailment, "An NLI model found the claim entailed by retrieved evidence.", agreement
     if entailment_votes and contradiction_votes:
         return "uncertain", max(best_entailment, best_contradiction), "Retrieved sources do not agree strongly enough to verify this claim.", agreement
@@ -781,6 +900,8 @@ def _nli_verdict(claim: str, evidence: list[EvidenceSource]) -> tuple[str, float
         )
     lexical_support = strong_textual_support
     if lexical_support >= 0.68 and not contradiction_votes:
+        if missing_location:
+            return "uncertain", lexical_support, "The retrieved evidence does not establish the named location.", agreement
         confidence = min(0.92, 0.55 + 0.45 * lexical_support)
         return "supported", confidence, "Retrieved evidence closely matches the factual content of this claim.", agreement
     return "uncertain", best_neutral, "Retrieved evidence does not clearly entail or contradict this claim.", agreement
@@ -1067,6 +1188,16 @@ def verify_claims(
                 focused_evidence = option_table_evidence[:2]
             status, confidence, rationale, agreement = _nli_verdict(claim, focused_evidence)
             citations = _claim_evidence_citations(claim, focused_evidence)
+            if not citations and status in {"supported", "unsupported"} and len(focused_evidence) == 1:
+                # If NLI made a decisive judgement using one premise, show
+                # that exact source even when lexical citation ranking misses
+                # a paraphrase such as "opens" versus "opening time".
+                source = focused_evidence[0]
+                excerpt = _claim_evidence_excerpt(claim, source, sentence_limit=1)
+                prefix = f"{source.title}. "
+                if excerpt.startswith(prefix):
+                    excerpt = excerpt[len(prefix):]
+                citations = [source.model_copy(update={"snippet": excerpt})]
             assessments.append(
                 ClaimAssessment(
                     claim=claim,
