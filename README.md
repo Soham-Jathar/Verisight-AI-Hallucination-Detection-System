@@ -12,13 +12,16 @@ Large language models can give polished answers that contain unsupported, incomp
 User question, voice input, document, or image
                     |
                     v
+      FastAPI receives the request and context
+                    |
+                    v
+ Evidence retrieval, filtering, and semantic ranking
+                    |
+                    v
           Candidate answer from an LLM
                     |
                     v
        Atomic factual claim extraction
-                    |
-                    v
- Evidence retrieval, filtering, and semantic ranking
                     |
                     v
       NLI-based claim-to-evidence verification
@@ -73,10 +76,10 @@ When an answer contains unsupported claims and sufficient supporting evidence is
 
 | Stage | Purpose |
 |---|---|
-| Answer generation | Produces a candidate response to the user’s request. |
-| Claim extraction | Identifies the factual statements that need checking. |
 | Retrieval | Finds web and/or uploaded-document evidence relevant to the question. |
 | Ranking | Uses semantic similarity and source checks to select the most relevant evidence. |
+| Answer generation | Produces a candidate response using the question, context, and available evidence. |
+| Claim extraction | Identifies the factual statements that need checking. |
 | NLI verification | Tests whether the selected evidence entails, contradicts, or does not establish each claim. |
 | Result presentation | Shows claim verdicts, focused evidence excerpts, citations, reliability, and optional uncertainty. |
 
