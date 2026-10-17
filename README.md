@@ -51,6 +51,12 @@ Verification is independent of the model's confidence in its own answer. When ev
 | Conversation Insights | Shows a private, print-ready summary of one signed-in conversation; the browser can save it as a PDF without new model or search requests. |
 | Verification feedback | Lets users mark a claim check as helpful or needing correction; feedback does not automatically retrain the verifier. |
 
+### Conversation Insights
+
+After signing in, select a chat and choose **View insights** in the chat header, or **Insights** beside that chat in the history list. The view summarizes the selected conversation and presents each completed question and answer separately, with its recorded reliability and optional uncertainty scores shown as percentages and charts. It also shows claim-verdict counts and model-comparison scores when those were recorded.
+
+Choose **Print / Save as PDF** in the insights view to keep a copy. The view uses the conversation data already in the browser; it does not call an LLM or retrieve new evidence. A missing score is shown as **Not measured**, not as a zero score. Conversation averages summarize available scores and are not a fresh verification result.
+
 ## 🛠️ Tech stack
 
 | Layer | Technologies |
