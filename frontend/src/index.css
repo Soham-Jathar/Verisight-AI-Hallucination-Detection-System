@@ -99,6 +99,13 @@ body { overflow: hidden; }
 .sidebar-footer p { margin-top: 8px; }
 .chat-panel { height: 100vh; min-height: 0; overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }
 .chat-header { position: relative; z-index: 2; background: #151d30; }
+.report-button { padding: 7px 10px; color: #e5ebff; border: 1px solid #9eafe250; border-radius: 7px; background: #29375d; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.report-button:hover:not(:disabled) { background: #354876; }
+.report-button:disabled, .history-action:disabled { opacity: .42; cursor: not-allowed; }
+.history-row { display: block; border-radius: 8px; }
+.history-row .history-item { width: 100%; }
+.history-actions { justify-content: flex-end; padding: 0 5px 5px; }
+@media (max-width: 1050px) { .chat-header { flex-wrap: wrap; }.chat-controls { flex-wrap: wrap; } }
 .message-thread { width: 100%; min-height: 0; margin: 0; overflow-y: auto; overscroll-behavior: contain; padding: 42px max(22px, calc((100% - 850px) / 2)) 30px; }
 .composer { position: relative; z-index: 2; background: linear-gradient(180deg, #141c2d, #101625); }
 

@@ -15,6 +15,7 @@ VeriSight lets you ask a question, see an AI-generated answer, and inspect wheth
 - Displays an evidence-based reliability estimate and, when enabled, an uncertainty estimate from additional answer samples.
 - Offers an evidence-grounded correction when a claim is unsupported and the retrieved sources support a replacement.
 - Supports follow-up questions, voice input, and optional Supabase sign-in for saved conversations.
+- Lets signed-in users view Conversation Insights for a selected chat, with each question, answer, recorded scores, and per-question charts.
 
 ## ⚙️ How it works
 
@@ -47,6 +48,7 @@ Verification is independent of the model's confidence in its own answer. When ev
 | Optional uncertainty | Uses additional answer samples to estimate how much generated answers vary. |
 | Evidence-grounded correction | Offers a replacement only when the retrieved evidence can support it. |
 | Saved conversations | Uses Supabase Auth, PostgreSQL, and Row-Level Security for signed-in chat history. |
+| Conversation Insights | Shows a private, print-ready summary of one signed-in conversation; the browser can save it as a PDF without new model or search requests. |
 | Verification feedback | Lets users mark a claim check as helpful or needing correction; feedback does not automatically retrain the verifier. |
 
 ## 🛠️ Tech stack

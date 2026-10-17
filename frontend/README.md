@@ -17,6 +17,7 @@ It provides the conversational interface for asking questions, uploading PDFs or
 - Helpful / needs-correction feedback controls on each verification
 - Supabase sign-up, sign-in, password recovery, and persistent chat history
 - Rename and delete controls for saved signed-in conversations
+- Conversation Insights for signed-in users, including question/answer pairs, recorded reliability and uncertainty, and printable charts
 
 ## Prerequisites
 
@@ -44,6 +45,8 @@ npm run dev
 ```
 
 Vite is configured to use `http://localhost:5173` in normal local development.
+
+To view insights, sign in, select the chat, and choose **View insights** (or **Insights** beside its history entry). Conversation Insights opens in a new tab; choose **Print / Save as PDF** there if you want a copy. Missing scores are labelled *Not measured*, not treated as zero. The insights use the selected chat data in the browser and do not make a new AI or search request.
 
 ## Build for deployment
 

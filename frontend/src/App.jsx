@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { deleteSavedConversation, loadSavedConversations, saveConversation } from './lib/conversations'
+import { buildChatReportHtml, reportExchanges } from './lib/chatReport'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -269,6 +270,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false)
   const [passwordRecoveryOpen, setPasswordRecoveryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyOwnerId, setHistoryOwnerId] = useState(null)
   const [renamingId, setRenamingId] = useState(null)
   const [renameDraft, setRenameDraft] = useState('')
   const pdfInputRef = useRef(null)
@@ -340,6 +342,12 @@ function App() {
     })
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (mounted) setUser(session?.user ?? null)
+      if (mounted && event === 'SIGNED_OUT') {
+        const emptyConversation = createConversation()
+        setConversations([emptyConversation])
+        setActiveId(emptyConversation.id)
+        setHistoryOwnerId(null)
+      }
       if (mounted && event === 'PASSWORD_RECOVERY') {
         setPasswordRecoveryOpen(true)
         setAuthOpen(true)
@@ -348,25 +356,36 @@ function App() {
     return () => { mounted = false; subscription.subscription.unsubscribe() }
   }, [])
 
+  const userId = user?.id
+
   useEffect(() => {
-    if (!user) return
+    if (!userId) {
+      setHistoryOwnerId(null)
+      return
+    }
     let mounted = true
     async function restoreHistory() {
       setHistoryLoading(true)
+      setHistoryOwnerId(null)
       try {
-        const saved = await loadSavedConversations(user.id)
-        if (!mounted || !saved.length) return
-        setConversations(saved)
-        setActiveId(saved[0].id)
+        const saved = await loadSavedConversations(userId)
+        if (!mounted) return
+        if (saved.length) {
+          setConversations(saved)
+          setActiveId(saved[0].id)
+        }
       } catch {
         if (mounted) setError('Your saved history could not be loaded.')
       } finally {
-        if (mounted) setHistoryLoading(false)
+        if (mounted) {
+          setHistoryOwnerId(userId)
+          setHistoryLoading(false)
+        }
       }
     }
     restoreHistory()
     return () => { mounted = false }
-  }, [user])
+  }, [userId])
 
   const activeConversation = useMemo(() => conversations.find((conversation) => conversation.id === activeId) ?? conversations[0], [activeId, conversations])
 
@@ -445,9 +464,29 @@ function App() {
   async function signOut() {
     await supabase?.auth.signOut()
     setUser(null)
+    setHistoryOwnerId(null)
     const conversation = createConversation()
     setConversations([conversation])
     setActiveId(conversation.id)
+  }
+
+  function generateConversationReport(conversation) {
+    if (!user || historyOwnerId !== user.id || historyLoading) {
+      setError('Sign in and wait for your chats to load before viewing insights.')
+      return
+    }
+    try {
+      const html = buildChatReportHtml(conversation)
+      const preview = window.open('', '_blank')
+      if (!preview) throw new Error('Your browser blocked the insights window. Allow pop-ups for VeriSight and try again.')
+      preview.opener = null
+      preview.document.open()
+      preview.document.write(html)
+      preview.document.close()
+      setError('')
+    } catch (reportError) {
+      setError(reportError instanceof Error ? reportError.message : 'Conversation insights could not be opened.')
+    }
   }
 
   async function uploadAttachment(event, endpoint, nextMode, fallbackMessage) {
@@ -522,7 +561,7 @@ function App() {
   async function handleSubmit(event) {
     event.preventDefault()
     const question = draft.trim()
-    if (question.length < 3 || loading || uploading || apiStatus !== 'online' || !activeConversation) return
+    if (question.length < 3 || loading || uploading || historyLoading || apiStatus !== 'online' || !activeConversation) return
     if ((evidenceMode === 'document' || evidenceMode === 'image' || evidenceMode === 'hybrid') && !document) { setError('Attach a PDF or image before using its evidence.'); return }
 
     const conversationId = activeConversation.id
@@ -571,6 +610,7 @@ function App() {
           </form>
           : <><button type="button" className={conversation.id === activeConversation?.id ? 'history-item active' : 'history-item'} onClick={() => setActiveId(conversation.id)}><span>{conversation.title}</span><small>{conversation.messages.length ? `${Math.ceil(conversation.messages.length / 2)} message${conversation.messages.length > 2 ? 's' : ''}` : 'Empty'}</small></button>
             {user && <div className="history-actions">
+              <button type="button" className="history-action" onClick={() => generateConversationReport(conversation)} disabled={historyOwnerId !== user.id || !reportExchanges(conversation).length} aria-label={`View insights for ${conversation.title}`} title="View conversation insights">Insights</button>
               <button type="button" className="history-action" onClick={() => startRename(conversation)} aria-label={`Rename ${conversation.title}`} title="Rename chat">Rename</button>
               <button type="button" className="history-action delete" onClick={() => deleteConversation(conversation)} aria-label={`Delete ${conversation.title}`} title="Delete chat">Delete</button>
             </div>}</>}
@@ -584,6 +624,7 @@ function App() {
       <header className="chat-header">
         <div><p>AI HALLUCINATION DETECTION</p><h1>{activeConversation?.title ?? 'New conversation'}</h1></div>
         <div className="chat-controls">
+          {user && <button type="button" className="report-button" onClick={() => generateConversationReport(activeConversation)} disabled={historyOwnerId !== user.id || !reportExchanges(activeConversation).length}>View insights</button>}
           <label className="provider-select"><span>Model</span><select value={provider} onChange={(event) => setProvider(event.target.value)}>{providers.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.label}{item.configured ? '' : ' (add key)'}</option>)}</select></label>
           <label className="provider-select"><span>Evidence</span><select value={evidenceMode} onChange={(event) => setEvidenceMode(event.target.value)}><option value="web">Web</option><option value="document" disabled={!document || document.kind !== 'pdf'}>PDF</option><option value="image" disabled={!document || document.kind !== 'image'}>Image text</option><option value="hybrid" disabled={!document}>Hybrid</option></select></label>
           <label className="verify-toggle"><input type="checkbox" checked={verifyEnabled} onChange={(event) => setVerifyEnabled(event.target.checked)} /><span></span>Verify</label>
@@ -608,7 +649,7 @@ function App() {
             </div>}
           </div>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="Message VeriSight..." aria-label="Message VeriSight" aria-keyshortcuts="Enter" rows="1" />
-          <button className="send-button" type="submit" disabled={loading || uploading || apiStatus !== 'online' || draft.trim().length < 3}>{loading ? 'Working...' : 'Send'}</button>
+          <button className="send-button" type="submit" disabled={loading || uploading || historyLoading || apiStatus !== 'online' || draft.trim().length < 3}>{loading ? 'Working...' : 'Send'}</button>
         </div>
         <p>{verifyEnabled ? `Verification is on: using ${evidenceMode === 'document' ? 'your PDF' : evidenceMode === 'image' ? 'text extracted from your image' : evidenceMode === 'hybrid' ? `web and your ${document?.kind === 'image' ? 'image text' : 'PDF'}` : 'web evidence'}.${uncertaintyEnabled ? ' Uncertainty uses two additional answer samples.' : ''}` : 'Verification is off: this response will not receive a reliability score.'}</p>
         {error && <strong className="error">{error}</strong>}
