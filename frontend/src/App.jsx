@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { deleteSavedConversation, loadSavedConversations, saveConversation } from './lib/conversations'
-import { buildChatReportHtml, reportExchanges } from './lib/chatReport'
+import { buildAccountInsightsHtml, buildChatReportHtml, completedChatCount, reportExchanges } from './lib/chatReport'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -367,6 +367,7 @@ function App() {
     async function restoreHistory() {
       setHistoryLoading(true)
       setHistoryOwnerId(null)
+      let loaded = false
       try {
         const saved = await loadSavedConversations(userId)
         if (!mounted) return
@@ -374,11 +375,12 @@ function App() {
           setConversations(saved)
           setActiveId(saved[0].id)
         }
+        loaded = true
       } catch {
         if (mounted) setError('Your saved history could not be loaded.')
       } finally {
         if (mounted) {
-          setHistoryOwnerId(userId)
+          setHistoryOwnerId(loaded ? userId : null)
           setHistoryLoading(false)
         }
       }
@@ -470,13 +472,13 @@ function App() {
     setActiveId(conversation.id)
   }
 
-  function generateConversationReport(conversation) {
+  function openInsights(buildHtml) {
     if (!user || historyOwnerId !== user.id || historyLoading) {
       setError('Sign in and wait for your chats to load before viewing insights.')
       return
     }
     try {
-      const html = buildChatReportHtml(conversation)
+      const html = buildHtml()
       const preview = window.open('', '_blank')
       if (!preview) throw new Error('Your browser blocked the insights window. Allow pop-ups for VeriSight and try again.')
       preview.opener = null
@@ -487,6 +489,14 @@ function App() {
     } catch (reportError) {
       setError(reportError instanceof Error ? reportError.message : 'Conversation insights could not be opened.')
     }
+  }
+
+  function generateConversationReport(conversation) {
+    openInsights(() => buildChatReportHtml(conversation))
+  }
+
+  function generateAccountReport() {
+    openInsights(() => buildAccountInsightsHtml(conversations))
   }
 
   async function uploadAttachment(event, endpoint, nextMode, fallbackMessage) {
@@ -624,7 +634,7 @@ function App() {
       <header className="chat-header">
         <div><p>AI HALLUCINATION DETECTION</p><h1>{activeConversation?.title ?? 'New conversation'}</h1></div>
         <div className="chat-controls">
-          {user && <button type="button" className="report-button" onClick={() => generateConversationReport(activeConversation)} disabled={historyOwnerId !== user.id || !reportExchanges(activeConversation).length}>View insights</button>}
+          {user && <button type="button" className="report-button" onClick={generateAccountReport} disabled={historyOwnerId !== user.id || !completedChatCount(conversations)} title="View insights across all your chats">All chat insights</button>}
           <label className="provider-select"><span>Model</span><select value={provider} onChange={(event) => setProvider(event.target.value)}>{providers.map((item) => <option key={item.id} value={item.id} disabled={!item.configured}>{item.label}{item.configured ? '' : ' (add key)'}</option>)}</select></label>
           <label className="provider-select"><span>Evidence</span><select value={evidenceMode} onChange={(event) => setEvidenceMode(event.target.value)}><option value="web">Web</option><option value="document" disabled={!document || document.kind !== 'pdf'}>PDF</option><option value="image" disabled={!document || document.kind !== 'image'}>Image text</option><option value="hybrid" disabled={!document}>Hybrid</option></select></label>
           <label className="verify-toggle"><input type="checkbox" checked={verifyEnabled} onChange={(event) => setVerifyEnabled(event.target.checked)} /><span></span>Verify</label>

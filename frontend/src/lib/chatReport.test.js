@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildChatReportHtml, reportExchanges } from './chatReport.js'
+import { buildAccountInsightsHtml, buildChatReportHtml, completedChatCount, reportExchanges } from './chatReport.js'
 
 const timestamp = new Date('2026-10-17T12:00:00Z')
 
@@ -31,6 +31,9 @@ test('plots measured values and labels unavailable uncertainty without inventing
   assert.match(html, /Question 1/)
   assert.match(html, /Question 2/)
   assert.match(html, /Conversation Insights/)
+  assert.match(html, /class="overview-question"[^>]*>Question one\?/)
+  assert.match(html, /class="verdict supported">1 supported/)
+  assert.match(html, /class="verdict uncertain">1 needs review/)
   assert.match(html, /92%/)
   assert.match(html, /0%/)
   assert.match(html, /Not measured/)
@@ -56,4 +59,37 @@ test('does not generate a report from an empty or pending-only chat', () => {
     { role: 'user', content: 'Question?' },
     { role: 'assistant', pending: true },
   ]), timestamp), /no completed/)
+})
+
+test('account insights combine completed answers from every chat and keep their chat names', () => {
+  const first = { title: 'Python <history>', messages: [
+    { role: 'user', content: 'Who created Python?' },
+    { role: 'assistant', content: 'Guido van Rossum.', verification: { reliability_score: 0.9, uncertainty_score: 0.2, claims: [{ status: 'supported' }] } },
+  ] }
+  const second = { title: 'Space', messages: [
+    { role: 'user', content: 'Who was Kalpana Chawla?' },
+    { role: 'assistant', content: 'An astronaut.', verification: { reliability_score: 0.7, uncertainty_score: 0.4, claims: [{ status: 'uncertain' }] } },
+  ] }
+  const empty = conversation([{ role: 'user', content: 'Pending question?' }, { role: 'assistant', pending: true }])
+
+  const html = buildAccountInsightsHtml([first, empty, second], timestamp)
+  assert.equal(completedChatCount([first, empty, second]), 2)
+  assert.match(html, /Account Insights - All chats/)
+  assert.match(html, /2<\/b><span>Chats with answers/)
+  assert.match(html, /2<\/b><span>Answered questions/)
+  assert.match(html, /80%/)
+  assert.match(html, /30%/)
+  assert.match(html, /Python &lt;history&gt;/)
+  assert.match(html, /Who was Kalpana Chawla\?/)
+  assert.doesNotMatch(html, /Pending question\?/)
+  assert.doesNotMatch(html, /Python <history>/)
+
+  const afterDeletion = buildAccountInsightsHtml([second], timestamp)
+  assert.equal(completedChatCount([second]), 1)
+  assert.doesNotMatch(afterDeletion, /Who created Python\?/)
+  assert.match(afterDeletion, /Who was Kalpana Chawla\?/)
+})
+
+test('account insights require at least one completed answer', () => {
+  assert.throws(() => buildAccountInsightsHtml([], timestamp), /no completed/)
 })

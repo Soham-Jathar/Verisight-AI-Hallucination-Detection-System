@@ -15,7 +15,7 @@ VeriSight lets you ask a question, see an AI-generated answer, and inspect wheth
 - Displays an evidence-based reliability estimate and, when enabled, an uncertainty estimate from additional answer samples.
 - Offers an evidence-grounded correction when a claim is unsupported and the retrieved sources support a replacement.
 - Supports follow-up questions, voice input, and optional Supabase sign-in for saved conversations.
-- Lets signed-in users view Conversation Insights for a selected chat, with each question, answer, recorded scores, and per-question charts.
+- Lets signed-in users view account-wide insights across their chats or open insights for an individual chat, with recorded scores and per-question charts.
 
 ## ⚙️ How it works
 
@@ -48,14 +48,14 @@ Verification is independent of the model's confidence in its own answer. When ev
 | Optional uncertainty | Uses additional answer samples to estimate how much generated answers vary. |
 | Evidence-grounded correction | Offers a replacement only when the retrieved evidence can support it. |
 | Saved conversations | Uses Supabase Auth, PostgreSQL, and Row-Level Security for signed-in chat history. |
-| Conversation Insights | Shows a private, print-ready summary of one signed-in conversation; the browser can save it as a PDF without new model or search requests. |
+| Account and chat insights | Shows a private, print-ready summary across the signed-in account's chats or for one selected chat; the browser can save it as a PDF without new model or search requests. |
 | Verification feedback | Lets users mark a claim check as helpful or needing correction; feedback does not automatically retrain the verifier. |
 
-### Conversation Insights
+### Account and conversation insights
 
-After signing in, select a chat and choose **View insights** in the chat header, or **Insights** beside that chat in the history list. The view summarizes the selected conversation and presents each completed question and answer separately, with its recorded reliability and optional uncertainty scores shown as percentages and charts. It also shows claim-verdict counts and model-comparison scores when those were recorded.
+After signing in, choose **All chat insights** in the header for a snapshot across your loaded chats, or **Insights** beside a chat in the history list for that chat alone. The account view includes a per-chat breakdown and presents each completed question and answer separately, with its recorded reliability and optional uncertainty scores. It also shows claim-verdict counts and model-comparison scores when those were recorded. Opening it again reflects chats added or deleted since the previous snapshot.
 
-Choose **Print / Save as PDF** in the insights view to keep a copy. The view uses the conversation data already in the browser; it does not call an LLM or retrieve new evidence. A missing score is shown as **Not measured**, not as a zero score. Conversation averages summarize available scores and are not a fresh verification result.
+Choose **Print / Save as PDF** in either insights view to keep a copy. The views use chat data already loaded in the browser; they do not call an LLM or retrieve new evidence. A missing score is shown as **Not measured**, not as a zero score. Averages summarize available scores and are not a fresh verification result.
 
 ## 🛠️ Tech stack
 
